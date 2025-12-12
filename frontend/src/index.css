@@ -1,0 +1,636 @@
+/* ========= RESET ========= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* ========= PALETA DARK AZULADA ========= */
+:root {
+  --bg-body: #020617;         /* casi negro azulado */
+  --bg-card: #020617;         /* base de las tarjetas */
+  --bg-card-alt: #0b1220;     /* tarjeta un poquito más clara */
+
+  --border-soft: #1f2937;
+  --border-strong: #374151;
+
+  --text-main: #e5e7eb;       /* gris muy claro */
+  --text-muted: #9ca3af;      /* gris medio */
+
+  --primary: #3b82f6;         /* azul vivo */
+  --primary-hover: #2563eb;   /* azul más intenso */
+
+  --danger: #ef4444;
+  --success: #22c55e;
+
+  --row-red: rgba(248, 113, 113, 0.16);     /* rojo suave translúcido */
+  --row-yellow: rgba(250, 204, 21, 0.18);   /* amarillo suave */
+  --row-green: rgba(34, 197, 94, 0.16);     /* verde suave */
+
+  --shadow-soft: 0 20px 40px rgba(15, 23, 42, 0.8);
+}
+
+/* ========= BODY / LAYOUT ========= */
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #000 100%);
+  color: var(--text-main);
+}
+
+/* Contenedor general */
+.app-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 32px;
+}
+
+/* ========= HEADER / NAV ========= */
+header {
+  background: linear-gradient(135deg, #020617, #020617 45%, #111827 100%);
+  border-radius: 18px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid #1e293b;
+  text-align: center; /* 👈 centramos título y contenido */
+}
+
+header h1 {
+  margin: 0 0 8px 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center; /* 👈 centramos los botones */
+}
+
+nav a {
+  font-size: 14px;
+  text-decoration: none;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-color: rgba(15, 23, 42, 0.9);
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, transform 0.05s ease;
+}
+
+nav a:hover {
+  background-color: #111827;
+  color: #e5e7eb;
+  border-color: #1f2937;
+  transform: translateY(-1px);
+}
+
+.nav-link-active {
+  border-color: var(--primary);
+  background: radial-gradient(circle at top left, #1d4ed8, #020617 60%);
+  color: #dbeafe;
+}
+
+/* ========= TIPOGRAFÍA ========= */
+h2 {
+  font-size: 20px;
+  margin: 0 0 10px 0;
+  color: #f9fafb;
+}
+
+h3 {
+  font-size: 16px;
+  margin: 12px 0 8px 0;
+  color: #e5e7eb;
+}
+
+p {
+  margin: 4px 0;
+}
+
+small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ========= LAYOUT DE PÁGINAS ========= */
+
+/* Página general */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;  /* 👈 centramos horizontalmente el contenido de cada página */
+}
+
+/* Página de ingreso centrada */
+.page-ingreso {
+  display: flex;
+  justify-content: center; /* centra horizontal */
+  width: 100%;
+}
+
+.page-ingreso-inner {
+  width: 100%;
+  max-width: 600px; /* centrado, tipo formulario */
+  text-align: center; /* 👈 centra textos dentro de la card de ingreso */
+}
+
+/* ========= TARJETAS ========= */
+
+.card {
+  background: radial-gradient(circle at top, #111827 0, #020617 55%);
+  border-radius: 16px;
+  padding: 16px 18px 18px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid #1f2937;
+}
+
+/* ========= INPUTS / FORMULARIOS ========= */
+input[type='text'],
+input[type='number'],
+input[type='date'] {
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  font-size: 14px;
+  outline: none;
+  min-width: 0;
+  background-color: #020617;
+  color: var(--text-main);
+}
+
+input[type='text']::placeholder,
+input[type='number']::placeholder {
+  color: #6b7280;
+}
+
+input[type='text']:focus,
+input[type='number']:focus,
+input[type='date']:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.8);
+}
+
+/* ScannerInput envoltura */
+.scanner-input-wrapper {
+  margin-bottom: 12px;
+}
+
+.scanner-input-wrapper input {
+  width: 100%;
+}
+
+/* Filtros de fecha */
+.filtros-fecha {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.filtros-fecha label {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+/* ========= BOTONES ========= */
+
+button {
+  font-size: 14px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid #4b5563;
+  background: linear-gradient(135deg, #020617, #020617 40%, #020617 100%);
+  cursor: pointer;
+  color: var(--text-main);
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, transform 0.05s ease, box-shadow 0.1s ease;
+}
+
+button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #111827, #020617 60%);
+  border-color: #6b7280;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.9);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Botón principal */
+.btn-primary {
+  background: radial-gradient(circle at top left, #3b82f6, #1d4ed8 45%, #020617 100%);
+  border-color: #3b82f6;
+  color: #e5e7eb;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: radial-gradient(circle at top left, #60a5fa, #2563eb 45%, #020617 100%);
+}
+
+select {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  font-size: 14px;
+  outline: none;
+  background-color: #020617;
+  color: var(--text-main);
+}
+
+select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.8);
+}
+
+
+/* ============ TABLA VENCIMIENTOS (dark) ============ */
+
+.table-venc {
+  border-collapse: collapse;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  background-color: #020617;
+}
+
+.table-venc thead {
+  background: linear-gradient(90deg, #0f172a, #020617);
+}
+
+.table-venc th,
+.table-venc td {
+  padding: 8px 12px;
+  font-size: 14px;
+  border-bottom: 1px solid #1e293b;
+  color: #e5e7eb; /* texto claro */
+}
+
+.table-venc th {
+  font-weight: 500;
+  color: #93a5b4; /* títulos con gris azulado */
+}
+
+/* ===== Colores por días ===== */
+
+/* Vencimiento >30 días: verde suave */
+.row-green {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+}
+/* Entre 16 y 30 días: amarillo suave */
+.row-yellow {
+  background-color: rgba(250, 204, 21, 0.16) !important;
+}
+/* <= 15 días: rojo suave */
+.row-red {
+  background-color: rgba(248, 113, 113, 0.14) !important;
+}
+
+/* Texto alineado */
+.text-right {
+  text-align: right;
+}
+
+/* Hover opcional (profesional) */
+.table-venc tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.14);
+}
+
+/* ========= TABLAS ========= */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background-color: #020617;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+thead {
+  background: linear-gradient(90deg, #020617, #020617 40%, #020617 100%);
+}
+
+th,
+td {
+  padding: 7px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid #111827;
+}
+
+th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Filas alternadas muy suaves */
+tbody tr:nth-child(even) {
+  background-color: #020617;
+}
+
+/* Fila por estado de vencimiento (si usás classes) */
+.row-green {
+  background-color: var(--row-green);
+}
+
+.row-yellow {
+  background-color: var(--row-yellow);
+}
+
+.row-red {
+  background-color: var(--row-red);
+}
+
+/* ========= MENSAJES ========= */
+
+.alert-error {
+  background-color: rgba(248, 113, 113, 0.14);
+  color: #fecaca;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.6);
+}
+
+.alert-info {
+  background-color: rgba(59, 130, 246, 0.14);
+  color: #bfdbfe;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.7);
+}
+
+/* ========= MODALES ========= */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: radial-gradient(circle at top, #111827 0, #020617 70%);
+  border-radius: 16px;
+  padding: 16px 18px;
+  min-width: 280px;
+  max-width: 420px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid #1f2937;
+}
+
+.modal h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #f9fafb;
+}
+
+.modal p {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal input[type='text'],
+.modal input[type='number'] {
+  width: 100%;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ADMIN PAGE */
+
+.admin-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.admin-search label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.admin-suggestions {
+  list-style: none;
+  margin: 0;
+  margin-top: 6px;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #1f2937;
+  background-color: #020617;
+  box-shadow: var(--shadow-soft);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.admin-suggestion {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #111827;
+}
+
+.admin-suggestion:last-child {
+  border-bottom: none;
+}
+
+.admin-suggestion:hover {
+  background-color: rgba(59, 130, 246, 0.18);
+}
+
+.admin-suggestion.active {
+  background-color: rgba(59, 130, 246, 0.28);
+}
+
+.admin-suggestion-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-suggestion-name {
+  font-size: 14px;
+}
+
+.admin-suggestion-code {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-suggestion-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.admin-field label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+
+/* ========= RESPONSIVE ========= */
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 12px;
+  }
+
+  header {
+    padding: 12px 14px;
+  }
+
+  header h1 {
+    font-size: 18px;
+  }
+
+  th,
+  td {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  button {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+
+  /* Las cards ocupan casi todo el ancho en tablet/móvil */
+  .page-ingreso-inner,
+  .card {
+    max-width: 100%;
+  }
+}
+
+/* Ajuste especial para pantallas chicas tipo Samsung A04 */
+@media (max-width: 480px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  header {
+    padding: 10px 10px;
+    margin-bottom: 12px;
+  }
+
+  header h1 {
+    font-size: 16px;
+  }
+
+  nav {
+    gap: 6px;
+  }
+
+  nav a {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  /* La página centra todo y la card ocupa el ancho completo */
+  .page {
+    align-items: stretch;
+  }
+
+  .page-ingreso {
+    justify-content: center;
+  }
+
+  .page-ingreso-inner {
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .card {
+    padding: 12px 12px 14px;
+  }
+
+  /* Tablas: que se puedan scrollear en horizontal si no entran */
+  .table-venc,
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .table-venc thead,
+  table thead {
+    /* mantenemos header fijo arriba de la tabla */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .table-venc th,
+  .table-venc td,
+  table th,
+  table td {
+    white-space: nowrap;    /* evita que se corte raro el texto */
+    font-size: 11px;
+  }
+
+  /* Inputs y botones ocupan todo el ancho cuando hace falta */
+  input[type='text'],
+  input[type='number'],
+  input[type='date'],
+  select,
+  button {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* En admin, el listado y el form se ven uno debajo del otro bien */
+  .admin-search {
+    margin-bottom: 10px;
+  }
+
+  .admin-edit {
+    margin-top: 12px;
+  }
+}
