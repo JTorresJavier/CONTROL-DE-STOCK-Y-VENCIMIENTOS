@@ -1,7 +1,9 @@
 // src/routes/SalidaPage.jsx
 import { useState } from 'react';
 import { ScannerInput } from '../components/ScannerInput';
-import { CameraScanner } from '../components/CameraScanner';
+//import { CameraScanner } from '../components/CameraScanner';
+import { CameraScannerZXing } from "../components/CameraScannerZXing";
+
 import {
   getProductoByCodigo,
   getLotesByProducto,
@@ -117,6 +119,22 @@ export function SalidaPage() {
         )}
 
         {camOpen && (
+          <CameraScannerZXing
+            onResult={(codigo) => {
+              // 1) cerramos el modal YA
+              setCamOpen(false);
+
+              // 2) y recién después procesamos el código
+              setTimeout(() => {
+                handleCodeRead(codigo);
+              }, 0);
+            }}
+            onClose={() => setCamOpen(false)}
+          />
+        )}
+
+
+        {/* {camOpen && (
           <CameraScanner
             onResult={(codigo) => {
               handleCodeRead(codigo);
@@ -124,7 +142,7 @@ export function SalidaPage() {
             }}
             onClose={() => setCamOpen(false)}
           />
-        )}
+        )} */}
 
         {/* Input principal para lector/código manual */}
         <div className="scanner-input-wrapper">

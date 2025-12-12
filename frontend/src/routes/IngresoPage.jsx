@@ -6,8 +6,10 @@ import { ManualCodeModal } from '../components/Modals/ManualCodeModal';
 import { NewProductModal } from '../components/Modals/NewProductModal';
 import { QuantityModal } from '../components/Modals/QuantityModal';
 import { ExpiryModal } from '../components/Modals/ExpiryModal';
-import { CameraScanner } from '../components/CameraScanner';
+//import { CameraScanner } from '../components/CameraScanner';
 import { ProductNameSearch } from '../components/ProductNameSearch';
+import { CameraScannerZXing } from '../components/CameraScannerZXing';
+
 
 export function IngresoPage() {
   const {
@@ -54,13 +56,29 @@ export function IngresoPage() {
         )}
 
         {camOpen && (
+          <CameraScannerZXing
+            onResult={(codigo) => {
+              // 1) cerramos el modal YA
+              setCamOpen(false);
+
+              // 2) y recién después procesamos el código
+              setTimeout(() => {
+                handleCodeRead(codigo);
+              }, 0);
+            }}
+            onClose={() => setCamOpen(false)}
+          />
+        )}
+
+
+        {/* {camOpen && (
           <CameraScanner
             onResult={(codigo) => {
               handleCodeRead(codigo);
             }}
             onClose={() => setCamOpen(false)}
           />
-        )}
+        )} */}
 
         <div className="scanner-input-wrapper">
           <ScannerInput
