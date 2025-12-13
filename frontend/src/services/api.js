@@ -101,3 +101,9 @@ export async function registrarSalidaStock({
   });
   return handleResponse(res);
 }
+
+// Obtener TODOS los productos
+export async function getProductos() {
+  const res = await fetch(`${API_URL}/productos`);
+  return handleResponse(res);
+}
