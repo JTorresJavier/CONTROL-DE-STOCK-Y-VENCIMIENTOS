@@ -10,6 +10,7 @@ const getLotes = async (req, res) => {
         l.id,
         l.producto_id,
         l.fecha_vencimiento,
+        l.lote,
         l.cantidad,
         l.fecha_alta,
         p.nombre AS producto_nombre,
@@ -34,6 +35,7 @@ const getLotesVencimientos = async (req, res) => {
         l.id,
         l.producto_id,
         l.fecha_vencimiento,
+        l.lote,
         l.cantidad,
         l.fecha_alta,
         p.nombre AS producto_nombre,
@@ -59,6 +61,7 @@ const getLotesVencidos = async (req, res) => {
         l.id,
         l.producto_id,
         l.fecha_vencimiento,
+        l.lote,
         l.cantidad,
         l.fecha_alta,
         p.nombre AS producto_nombre,
@@ -92,15 +95,15 @@ const createLotesBatch = async (req, res) => {
     await conn.beginTransaction();
 
     for (const lote of lotes) {
-      const { productoId, fechaVencimiento, cantidad } = lote;
+      const { productoId, fechaVencimiento, cantidad, lote: nroLote } = lote;
 
       if (!productoId || !fechaVencimiento || !cantidad) {
         throw new Error('Datos de lote incompletos');
       }
 
       await conn.query(
-        'INSERT INTO lotes (producto_id, fecha_vencimiento, cantidad) VALUES (?, ?, ?)',
-        [productoId, fechaVencimiento, cantidad]
+        `INSERT INTO lotes (producto_id, lote, fecha_vencimiento, cantidad) VALUES (?, ?, ?, ?)`,
+        [productoId, nroLote || null, fechaVencimiento, cantidad]
       );
     }
 
@@ -127,6 +130,7 @@ const getLotesByProducto = async (req, res) => {
         l.id,
         l.producto_id,
         l.fecha_vencimiento,
+        l.lote,
         l.cantidad,
         l.fecha_alta,
         p.nombre AS producto_nombre,

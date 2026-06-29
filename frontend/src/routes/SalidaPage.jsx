@@ -1,6 +1,6 @@
 // src/routes/SalidaPage.jsx
 import { useState } from 'react';
-import { ScannerInput } from '../components/ScannerInput';
+//import { ScannerInput } from '../components/ScannerInput';
 //import { CameraScanner } from '../components/CameraScanner';
 import { CameraScannerZXing } from "../components/CameraScannerZXing";
 
@@ -9,7 +9,8 @@ import {
   getLotesByProducto,
   registrarSalidaStock
 } from '../services/api';
-import { ProductNameSearch } from '../components/ProductNameSearch';
+//import { ProductNameSearch } from '../components/ProductNameSearch';
+import { ProductSearchInput } from '../components/ProductSearchInput';
 
 // Helper para formatear fecha YYYY-MM-DD a DD/MM/YYYY
 function formatFecha(fechaISO) {
@@ -146,24 +147,32 @@ export function SalidaPage() {
 
         {/* Input principal para lector/código manual */}
         <div className="scanner-input-wrapper">
-          <ScannerInput
+          {/* <ScannerInput
             onCodeRead={handleCodeRead}
             onManualRequest={() => {
               // Podrías abrir un modal de código manual,
               // por ahora que escriban directo en el input.
             }}
-          />
+          /> */}
+          
+          {/* <ProductNameSearch
+            onProductSelected={(prod) => {
+                // Reutiliza el mismo flujo: carga producto y lotes
+                handleCodeRead(prod.codigo_barra);
+            }}
+            /> */}
+
+          <ProductSearchInput
+            onSelectCodigo={(codigo) => handleCodeRead(codigo)}
+                    onManualRequest={() => setManualOpen(true)}
+                    placeholder="Escaneá código o escribí nombre (COCA, MONSTER...)"
+                  />        
           <small>
             Escaneá el código del producto para ver su stock y vencimientos.
           </small>
         </div>
 
-        <ProductNameSearch
-        onProductSelected={(prod) => {
-            // Reutiliza el mismo flujo: carga producto y lotes
-            handleCodeRead(prod.codigo_barra);
-        }}
-        />
+        
 
         {/* Info de producto + stock */}
         {producto && (

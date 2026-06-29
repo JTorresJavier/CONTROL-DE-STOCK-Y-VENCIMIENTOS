@@ -26,6 +26,7 @@ export function VencimientosTable({ lotes }) {
           <th>Producto</th>
           <th>Cantidad</th>
           <th>Fecha vencimiento</th>
+          <th>Lote</th>
           <th>Descripción</th>
         </tr>
       </thead>
@@ -59,6 +60,7 @@ export function VencimientosTable({ lotes }) {
               <td>{lote.producto_nombre}</td>
               <td className="text-right">{lote.cantidad}</td>
               <td>{formatearFecha(lote.fecha_vencimiento)}</td>
+              <td>{lote.lote || '-'}</td>
               <td>{descripcion}</td>
             </tr>
           );

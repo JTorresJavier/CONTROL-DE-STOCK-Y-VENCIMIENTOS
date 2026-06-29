@@ -1,14 +1,17 @@
 // src/routes/IngresoPage.jsx
 import { useState } from 'react';
 import { useScannerFlow } from '../hooks/useScannerFlow';
-import { ScannerInput } from '../components/ScannerInput';
+//import { ScannerInput } from '../components/ScannerInput';
 import { ManualCodeModal } from '../components/Modals/ManualCodeModal';
 import { NewProductModal } from '../components/Modals/NewProductModal';
 import { QuantityModal } from '../components/Modals/QuantityModal';
 import { ExpiryModal } from '../components/Modals/ExpiryModal';
 //import { CameraScanner } from '../components/CameraScanner';
-import { ProductNameSearch } from '../components/ProductNameSearch';
+//import { ProductNameSearch } from '../components/ProductNameSearch';
 import { CameraScannerZXing } from '../components/CameraScannerZXing';
+import { ProductSearchInput } from '../components/ProductSearchInput';
+import { LoteModal } from '../components/Modals/LoteModal';
+
 
 
 export function IngresoPage() {
@@ -24,6 +27,7 @@ export function IngresoPage() {
     handleNewProductConfirm,
     handleQuantityConfirm,
     handleExpiryConfirm,
+    handleLoteConfirm,
     handleFinish,
     handleCancelFlow,   // 👈 NUEVO
     STEPS
@@ -81,10 +85,24 @@ export function IngresoPage() {
         )} */}
 
         <div className="scanner-input-wrapper">
-          <ScannerInput
+          {/* <ScannerInput
             onCodeRead={handleCodeRead}
             onManualRequest={() => setManualOpen(true)}
           />
+
+          <ProductNameSearch
+          onProductSelected={(prod) => {
+            // Simula que escaneaste el código de barras
+            handleCodeRead(prod.codigo_barra);
+          }}
+        /> */}
+
+        <ProductSearchInput
+          onSelectCodigo={(codigo) => handleCodeRead(codigo)}
+          onManualRequest={() => setManualOpen(true)}
+          placeholder="Escaneá código o escribí nombre (COCA, MONSTER...)"
+        />
+
           <small>
             Escaneá el código o usá la tecla <strong>Insert</strong> para cargar
             manualmente.
@@ -92,12 +110,7 @@ export function IngresoPage() {
         </div>
 
         {/* Buscador por nombre que dispara el mismo flujo que el escáner */}
-        <ProductNameSearch
-          onProductSelected={(prod) => {
-            // Simula que escaneaste el código de barras
-            handleCodeRead(prod.codigo_barra);
-          }}
-        />
+        
 
         <h3>Líneas cargadas (sin guardar todavía)</h3>
         {batch.length === 0 ? (
@@ -107,6 +120,7 @@ export function IngresoPage() {
             <thead>
               <tr>
                 <th>Producto ID</th>
+                <th>Lote</th>
                 <th>Cantidad</th>
                 <th>Fecha vencimiento</th>
               </tr>
@@ -115,6 +129,7 @@ export function IngresoPage() {
               {batch.map((lote, idx) => (
                 <tr key={idx}>
                   <td>{lote.productoId}</td>
+                  <td>{lote.lote || '-'}</td>
                   <td className="text-right">{lote.cantidad}</td>
                   <td>{lote.fechaVencimiento}</td>
                 </tr>
@@ -154,6 +169,13 @@ export function IngresoPage() {
           productoNombre={currentProduct?.nombre || ''}
           onConfirm={handleQuantityConfirm}
           onCancel={handleCancelFlow}   // 👈 cancela el flujo
+        />
+
+        <LoteModal
+          isOpen={step === STEPS.ASK_LOTE}
+          productoNombre={currentProduct?.nombre || ""}
+          onConfirm={handleLoteConfirm}
+          onCancel={handleCancelFlow}
         />
 
         {/* Modal fecha vencimiento */}

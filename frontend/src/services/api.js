@@ -1,21 +1,33 @@
 // src/services/api.js
 
-// URL base de la API (backend Node)
-//const API_URL = 'http://localhost:4000/api';
-//const API_URL = 'http://192.168.1.36:4000/api'
+// Detectamos si estamos corriendo dentro de Electron (cargado como archivo)
+// o en el navegador normal (dev con Vite o build servido desde web)
+function getApiUrl() {
+  // En Electron el protocolo es "file:" o la URL tiene electron en el user agent
+  const isElectron =
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' ||
+      navigator.userAgent.toLowerCase().includes('electron'));
 
-const API_HOST = window.location.hostname;
-export const API_URL = `http://${API_HOST}:4000/api`;
+  if (isElectron) {
+    // Dentro de Electron el backend Express corre en localhost:4000
+    return 'http://localhost:4000/api';
+  }
+
+  // En navegador normal (dev o deploy web) usamos el hostname dinámico
+  const API_HOST = window.location.hostname;
+  return `http://${API_HOST}:4000/api`;
+}
+
+export const API_URL = getApiUrl();
 
 // Función para manejar respuestas y errores
 async function handleResponse(res) {
-  // Si la respuesta no es OK, tiramos error con el JSON devuelto
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
     const message = errorBody.message || 'Error en la petición';
     throw new Error(message);
   }
-  // Si tiene contenido, devolvemos JSON
   return res.json().catch(() => ({}));
 }
 
@@ -81,7 +93,7 @@ export async function updateProductoNombre(codigoBarra, nombre, descripcion) {
   return handleResponse(res);
 }
 
-// Lotes activos de un producto (para mostrar detalle al descontar)
+// Lotes activos de un producto
 export async function getLotesByProducto(productoId) {
   const res = await fetch(`${API_URL}/lotes/producto/${productoId}`);
   return handleResponse(res);

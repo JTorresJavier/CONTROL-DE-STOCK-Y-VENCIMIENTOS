@@ -69,6 +69,8 @@ export function VencimientosPage() {
   // 6) Estado del orden de vencimiento dentro de cada grupo
   const [ordenFecha, setOrdenFecha] = useState('asc'); // 'asc' o 'desc'
 
+  const [vista, setVista] = useState('carga'); // 'carga' o 'vencimiento' // 'carga' = agrupado por fecha_alta (lo de ahora) // 'venc'  = listado global por fecha_vencimiento
+
   // 7) Cuando se monta el componente, pedimos datos al backend
   useEffect(() => {
     const load = async () => {
@@ -113,7 +115,22 @@ export function VencimientosPage() {
   const totalLineas = useMemo(() => {
     return gruposPorDia.reduce((acc, [, items]) => acc + items.length, 0);
   }, [gruposPorDia]);
+///////////////////////////////////////////////////////
+  const lotesOrdenadosPorVenc = useMemo(() => {
+  const copia = [...lotes];
 
+  copia.sort((a, b) => {
+    // Si falta fecha_vencimiento, mandamos al final
+    const fa = a?.fecha_vencimiento ? new Date(a.fecha_vencimiento) : new Date(8640000000000000);
+    const fb = b?.fecha_vencimiento ? new Date(b.fecha_vencimiento) : new Date(8640000000000000);
+
+    if (ordenFecha === 'asc') return fa - fb; // próximos primero
+    return fb - fa;
+  });
+
+  return copia;
+}, [lotes, ordenFecha]);
+////////////////////////////////////////////////////////
   return (
     <div className="page">
       <div className="card">
@@ -131,6 +148,17 @@ export function VencimientosPage() {
             alignItems: 'center'
           }}
         >
+
+          {/* NUEVO: selector de vista */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px', color: '#9ca3af' }}>Vista:</span>
+
+            <select value={vista} onChange={(e) => setVista(e.target.value)}>
+              <option value="carga">Agrupado por fecha de carga</option>
+              <option value="venc">Próximos a vencer (global)</option>
+            </select>
+          </div>
+
           <span style={{ fontSize: '14px', color: '#9ca3af' }}>
             Ordenar por fecha:
           </span>
@@ -142,31 +170,47 @@ export function VencimientosPage() {
         </div>
 
         {/* 12) total de líneas que se muestran */}
-        <p>Total líneas (por día): {totalLineas}</p>
+        {vista === 'carga' ? (
+          <p>Total líneas (por día): {totalLineas}</p>
+        ) : (
+          <p>Total líneas: {lotesOrdenadosPorVenc.length}</p>
+        )}
 
         {/* 13) Render por grupos: un encabezado por día + tabla para ese día */}
-        {gruposPorDia.length === 0 ? (
-          <p style={{ color: '#9ca3af' }}>No hay lotes para mostrar.</p>
-        ) : (
-          gruposPorDia.map(([dia, items]) => (
-            <div key={dia} style={{ marginTop: '14px' }}>
-              {/* Encabezado del día */}
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '8px'
-                }}
-              >
-                <h3 style={{ margin: 0 }}>Cargado el: {formatFechaAR(dia)}</h3>
-                <small style={{ color: '#9ca3af' }}>{items.length} líneas</small>
-              </div>
 
-              {/* Tabla de ese día */}
-              <VencimientosTable lotes={items} />
-            </div>
-          ))
+        
+
+
+        {vista === 'venc' ? (
+          lotesOrdenadosPorVenc.length === 0 ? (
+            <p style={{ color: '#9ca3af' }}>No hay lotes para mostrar.</p>
+          ) : (
+            <VencimientosTable lotes={lotesOrdenadosPorVenc} />
+          )
+        ) : (
+          gruposPorDia.length === 0 ? (
+            <p style={{ color: '#9ca3af' }}>No hay lotes para mostrar.</p>
+          ) : (
+            gruposPorDia.map(([dia, items]) => (
+              <div key={dia} style={{ marginTop: '14px' }}>
+                {/* Encabezado del día */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px'
+                  }}
+                >
+                  <h3 style={{ margin: 0 }}>Cargado el: {formatFechaAR(dia)}</h3>
+                  <small style={{ color: '#9ca3af' }}>{items.length} líneas</small>
+                </div>
+
+                {/* Tabla de ese día */}
+                <VencimientosTable lotes={items} />
+              </div>
+            ))
+          )
         )}
       </div>
     </div>

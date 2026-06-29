@@ -10,6 +10,7 @@ const STEPS = {
   IDLE: 'IDLE',
   ASK_NEW_PRODUCT_NAME: 'ASK_NEW_PRODUCT_NAME',
   ASK_QUANTITY: 'ASK_QUANTITY',
+  ASK_LOTE: 'ASK_LOTE',
   ASK_EXPIRY: 'ASK_EXPIRY'
 };
 
@@ -22,6 +23,7 @@ export function useScannerFlow() {
   const [step, setStep] = useState(STEPS.IDLE);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [currentLote, setCurrentLote] = useState('');
 
   // 🔹 Resetea todo el flujo actual y vuelve a IDLE
   const resetFlow = () => {
@@ -29,6 +31,7 @@ export function useScannerFlow() {
     setCurrentCode('');
     setCurrentQuantity('');
     setCurrentExpiryRaw('');
+    setCurrentLote("");
     setStep(STEPS.IDLE);
     setError(null);
   };
@@ -80,8 +83,14 @@ export function useScannerFlow() {
 
   const handleQuantityConfirm = (cantidad) => {
     setCurrentQuantity(cantidad);
-    setStep(STEPS.ASK_EXPIRY);
+    setStep(STEPS.ASK_LOTE);
   };
+
+  const handleLoteConfirm = (lote) => {
+  setCurrentLote(lote || "");
+  setStep(STEPS.ASK_EXPIRY);
+};
+
 
   function parseExpiryToISO(raw) {
     const value = String(raw).trim();
@@ -127,7 +136,8 @@ export function useScannerFlow() {
     const lote = {
       productoId: currentProduct.id,
       fechaVencimiento: isoDate,
-      cantidad: Number(currentQuantity)
+      cantidad: Number(currentQuantity),
+      lote: currentLote || null
     };
 
     setBatch((prev) => [...prev, lote]);
@@ -160,10 +170,12 @@ export function useScannerFlow() {
     currentCode,
     currentQuantity,
     currentExpiryRaw,
+    currentLote,
     handleCodeRead,
     handleNewProductConfirm,
     handleQuantityConfirm,
     handleExpiryConfirm,
+    handleLoteConfirm,
     handleFinish,
     handleCancelFlow,   // 👈 importante
     STEPS

@@ -32,7 +32,7 @@ const registrarSalidaStock = async (req, res) => {
       SELECT id, cantidad
       FROM lotes
       WHERE producto_id = ? AND cantidad > 0
-      ORDER BY fecha_vencimiento ASC
+      ORDER BY fecha_vencimiento ASC, id ASC
       `,
       [productoId]
     );
