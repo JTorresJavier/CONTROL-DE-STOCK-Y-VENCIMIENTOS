@@ -124,6 +124,12 @@ Recibí conforme:`;
   assert.equal(r.lineas[5].vencimiento, '2029-01-31');
   assert.equal(r.lineas[3].descripcion, 'IBUPROF. 600MG X10 COMPRIMIDOS');
   assert.equal(r.lineas.filter((l) => !l.vencimiento).length, 1); // solo las gasas
+
+  // El OCR leyó la cantidad "6" como "B": no se toma el código 20011 como cantidad; se deduce de total / unitario
+  const conB = parsearTexto(ocr.replace('CETIRIZINA 10 MG X 10 COMP           6 CT1102', 'CETIRIZINA 10 MG X 10 COMP           B CT1102'));
+  const cet = conB.lineas.find((l) => /CETIRIZINA/.test(l.descripcion));
+  assert.equal(cet.cantidad, 6);
+  assert.equal(cet.codigo, '20011');
 });
 
 test('no se pierden presentaciones (x 30), dosis decimales (0,5 mg) ni se redondean cantidades', () => {

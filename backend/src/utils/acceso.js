@@ -5,7 +5,13 @@
 //   Aun con PIN, desde otro equipo no se puede descargar/restaurar la base ni cambiar la configuración.
 
 const LOCALES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-const SOLO_LOCAL = [/^\/backup/, /^\/demo/, /^\/config$/];
+
+// Express no distingue mayúsculas ni la barra final: comparamos la ruta normalizada
+function soloLocal(req) {
+  const ruta = req.path.toLowerCase().replace(/\/+$/, '') || '/';
+  if (/^\/(backup|demo)(\/|$)/.test(ruta)) return true;
+  return ruta === '/config' && req.method !== 'GET';
+}
 
 function esLocal(req) {
   return LOCALES.has(req.socket.remoteAddress);
@@ -23,7 +29,7 @@ function protegerRed(leerConfig) {
     if (String(req.get('x-pin') || '') !== cfg.pinRed) {
       return res.status(401).json({ codigo: 'PIN', message: 'Ingresá el PIN que aparece en Herramientas, en la PC.' });
     }
-    if (SOLO_LOCAL.some((re) => re.test(req.path)) && !(req.path === '/config' && req.method === 'GET')) {
+    if (soloLocal(req)) {
       return res.status(403).json({ message: 'Esta acción solo se puede hacer desde la PC.' });
     }
     next();

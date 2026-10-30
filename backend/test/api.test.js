@@ -225,6 +225,9 @@ test('acceso desde la red: bloqueado por defecto, con PIN si se activa, sin resp
   assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456' }), 200);
   assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/backup' }), 403);
   assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/config', metodo: 'PUT' }), 403);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/BACKUP' }), 403);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/config/', metodo: 'PUT' }), 403);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/config', metodo: 'GET' }), 200);
 });
 
 test('configuración de alertas y respaldo/restauración', async () => {

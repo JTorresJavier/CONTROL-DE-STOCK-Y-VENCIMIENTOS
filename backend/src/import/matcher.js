@@ -87,7 +87,11 @@ function emparejarLinea(indice, linea) {
   // 3) Ya se importó antes con este mismo nombre
   const idAlias = indice.alias.get(norm);
   if (idAlias && indice.porId.has(idAlias)) {
-    return { estado: 'existe', producto: resumen(indice.porId.get(idAlias)), confianza: 0.97, motivo: 'Reconocido de una importación anterior' };
+    const p = indice.porId.get(idAlias);
+    // Si el documento trae un EAN distinto al del producto recordado, puede ser otra presentación: solo se sugiere
+    const eanContradice = linea.ean && /^\d{8,14}$/.test(p.codigo_barra) && sinCeros(p.codigo_barra) !== sinCeros(linea.ean);
+    if (!eanContradice) return { estado: 'existe', producto: resumen(p), confianza: 0.97, motivo: 'Reconocido de una importación anterior' };
+    return { estado: 'sugerido', producto: resumen(p), confianza: 0.6, motivo: 'Mismo nombre que una importación anterior, pero otro código de barras', alternativas: [] };
   }
 
   // 4) Nombre parecido

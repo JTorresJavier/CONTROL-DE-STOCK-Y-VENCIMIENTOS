@@ -163,7 +163,8 @@ function parsearLinea(original, opciones = {}) {
     }
     if (!cantidadElegida) {
       if (opciones.cantidadAlInicio && antesDeDesc.length) cantidadElegida = antesDeDesc[antesDeDesc.length - 1];
-      else if (opciones.cantidadAlFinal && despuesDeDesc.length) cantidadElegida = despuesDeDesc[0];
+      else if (opciones.cantidadAlFinal) cantidadElegida = despuesDeDesc[0]; // si no hay número en esa columna, no se inventa
+      else if (opciones.cantidadAlInicio) cantidadElegida = null;
       else if (antesDeDesc.length && !despuesDeDesc.length) cantidadElegida = antesDeDesc[antesDeDesc.length - 1];
       else if (despuesDeDesc.length) cantidadElegida = despuesDeDesc[0];
       else cantidadElegida = antesDeDesc[antesDeDesc.length - 1];
@@ -187,6 +188,17 @@ function parsearLinea(original, opciones = {}) {
     if (otro) codigo = otro.texto;
   } else if (precioUnitario === null && decimales.length) {
     precioUnitario = decimales[0];
+  }
+
+  // Sin cantidad legible (por ejemplo, el OCR leyó "6" como "B") pero con unitario y total: cantidad = total / unitario
+  if (cantidad === null && decimales.length >= 2) {
+    const u = decimales[decimales.length - 2];
+    const t = decimales[decimales.length - 1];
+    const q = u > 0 ? Math.round(t / u) : 0;
+    if (q > 0 && q <= 100000 && Math.abs(q * u - t) <= Math.max(0.02, t * 0.005)) {
+      cantidad = q;
+      precioUnitario = u;
+    }
   }
 
   // Código alfanumérico al inicio (ej: "AB123 IBUPROFENO ...")

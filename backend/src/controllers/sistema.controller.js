@@ -62,7 +62,7 @@ const putConfig = (req, res) => {
 
 // ─── Resumen para la pantalla de inicio ───────────────────────────────────────
 const getResumen = (req, res) => {
-  const cfg = leerConfig();
+  const cfg = configPublica(req);
   const hoy = hoyISO();
   const hasta = (dias) => sumarDias(hoy, dias);
 
@@ -132,8 +132,17 @@ async function respaldoAutomatico(prefijo = 'auto') {
   const dir = carpetaRespaldos();
   // Nunca se pisa un respaldo existente (dos respaldos en el mismo segundo llevan sufijo)
   const base = path.join(dir, nombreRespaldo(prefijo)).slice(0, -3);
-  let destino = `${base}.db`;
-  for (let n = 2; fs.existsSync(destino); n++) destino = `${base}_${n}.db`;
+  // Reservamos el nombre creando el archivo de forma exclusiva ("wx"): dos respaldos simultáneos no pueden elegir el mismo
+  let destino;
+  for (let n = 1; !destino; n++) {
+    const candidato = n === 1 ? `${base}.db` : `${base}_${n}.db`;
+    try {
+      fs.closeSync(fs.openSync(candidato, 'wx'));
+      destino = candidato;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
+  }
   await db.backup(destino);
   // Conservamos los 20 más nuevos
   const archivos = fs.readdirSync(dir).filter((f) => f.endsWith('.db')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
