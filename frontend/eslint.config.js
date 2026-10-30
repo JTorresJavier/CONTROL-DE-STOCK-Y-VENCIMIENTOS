@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // public/ocr: archivos de Tesseract copiados de node_modules (no son código del proyecto)
+  globalIgnores(['dist', 'public/ocr']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
