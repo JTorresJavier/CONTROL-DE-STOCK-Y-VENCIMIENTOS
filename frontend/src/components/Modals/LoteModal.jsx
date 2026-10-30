@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export function LoteModal({ isOpen, productoNombre, onConfirm, onCancel }) {
   const [lote, setLote] = useState("");
+  const [abiertoPrevio, setAbiertoPrevio] = useState(isOpen);
 
-  useEffect(() => {
+  // Cada vez que se abre, empieza vacío
+  if (isOpen !== abiertoPrevio) {
+    setAbiertoPrevio(isOpen);
     if (isOpen) setLote("");
-  }, [isOpen]);
+  }
 
   if (!isOpen) return null;
 

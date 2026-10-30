@@ -8,3 +8,4 @@ backend/database.db*
 respaldos/
 frontend/public/ocr/
 
+capturas/resultado-pruebas.json

@@ -5,4 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './', // <-- esto hace que los assets usen rutas relativas
+  // Es una app local (no se descarga por internet): los paquetes grandes (PDF, Excel) no son problema
+  build: { chunkSizeWarningLimit: 2500 },
 })

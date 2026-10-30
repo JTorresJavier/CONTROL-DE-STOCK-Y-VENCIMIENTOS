@@ -1,289 +1,167 @@
 // src/components/VencimientosTable.jsx
-// Tabla de lotes con acciones por fila: editar, descontar y eliminar
-// Soporta resaltado de texto cuando se busca desde VencimientosPage
+// Tabla de lotes con acciones por fila: editar, descontar, dar de baja y eliminar.
+import { Fragment, useState } from 'react';
+import { updateLote, deleteLote, bajaLote, updateProductoNombre } from '../services/api';
+import { estadoVencimiento, formatoAR } from '../utils/fechas';
+import { useConfig } from '../context/ConfigContext';
+import { FechaInput, Mensajes, Semaforo, Vacio } from './ui';
 
-import { useState } from 'react';
-import { updateLote, deleteLote, updateProductoNombre } from '../services/api';
-
-// ─── Helper: calcula cuántos días faltan para el vencimiento ─────────────────
-function diasFaltan(fechaISO) {
-  const hoy = new Date();
-  const fv = new Date(fechaISO);
-  hoy.setHours(0, 0, 0, 0);
-  fv.setHours(0, 0, 0, 0);
-  return Math.round((fv - hoy) / (1000 * 60 * 60 * 24));
-}
-
-// ─── Helper: formatea fecha ISO a DD/MM/YYYY ──────────────────────────────────
-function formatearFecha(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-}
-
-// ─── Helper: convierte fecha ISO a formato YYYY-MM-DD para input date ─────────
-function toInputDate(fechaISO) {
-  if (!fechaISO) return '';
-  return String(fechaISO).split('T')[0];
-}
-
-// ─── Componente Highlight ─────────────────────────────────────────────────────
-// Resalta en amarillo la parte del texto que coincide con la búsqueda
+// Resalta la parte del texto que coincide con la búsqueda
 function Highlight({ texto, busqueda }) {
   if (!busqueda || !texto) return <>{texto}</>;
-
   const idx = texto.toLowerCase().indexOf(busqueda.toLowerCase());
   if (idx === -1) return <>{texto}</>;
-
-  const antes = texto.slice(0, idx);
-  const coincidencia = texto.slice(idx, idx + busqueda.length);
-  const despues = texto.slice(idx + busqueda.length);
-
   return (
     <>
-      {antes}
-      <mark style={{
-        backgroundColor: 'rgba(250, 204, 21, 0.5)',
-        color: '#fff',
-        borderRadius: '3px',
-        padding: '0 2px'
-      }}>
-        {coincidencia}
-      </mark>
-      {despues}
+      {texto.slice(0, idx)}
+      <mark>{texto.slice(idx, idx + busqueda.length)}</mark>
+      {texto.slice(idx + busqueda.length)}
     </>
   );
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
 export function VencimientosTable({ lotes, onRefresh, busqueda = '' }) {
-  const [editandoId, setEditandoId] = useState(null);
-  const [editCantidad, setEditCantidad] = useState('');
-  const [editFecha, setEditFecha] = useState('');
-  const [editLote, setEditLote] = useState('');
-  const [editNombre, setEditNombre] = useState('');
-
-  const [descontandoId, setDescontandoId] = useState(null);
-  const [cantidadDescuento, setCantidadDescuento] = useState('');
-
-  const [error, setError] = useState(null);
-  const [okMsg, setOkMsg] = useState(null);
+  const { config } = useConfig();
+  const [editando, setEditando] = useState(null); // { id, cantidad, fecha, lote, nombre }
+  const [descontando, setDescontando] = useState(null); // { id, cantidad }
+  const [msg, setMsg] = useState({});
   const [loading, setLoading] = useState(false);
 
-  if (!lotes || lotes.length === 0) {
-    return <p style={{ color: '#93a5b4' }}>No hay lotes para mostrar.</p>;
-  }
+  if (!lotes || lotes.length === 0) return <Vacio>No hay lotes para mostrar.</Vacio>;
 
-  const abrirEdicion = (lote) => {
-    setEditandoId(lote.id);
-    setEditCantidad(String(lote.cantidad));
-    setEditFecha(toInputDate(lote.fecha_vencimiento));
-    setEditLote(lote.lote || '');
-    setEditNombre(lote.producto_nombre || '');
-    setDescontandoId(null);
-    setError(null);
-    setOkMsg(null);
-  };
-
-  const guardarEdicion = async (lote) => {
+  const accion = async (fn, ok) => {
     try {
       setLoading(true);
-      setError(null);
-      await updateLote(lote.id, {
-        cantidad: Number(editCantidad),
-        fecha_vencimiento: editFecha,
-        lote: editLote
-      });
-      if (editNombre.trim() && editNombre.trim() !== lote.producto_nombre) {
-        await updateProductoNombre(lote.codigo_barra, editNombre.trim());
+      setMsg({});
+      await fn();
+      setMsg({ ok });
+      setEditando(null);
+      setDescontando(null);
+      onRefresh();
+    } catch (err) {
+      setMsg({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const guardarEdicion = (lote) => {
+    if (!editando.fecha) { setMsg({ error: 'La fecha de vencimiento no es válida.' }); return; }
+    accion(async () => {
+      await updateLote(lote.id, { cantidad: Number(editando.cantidad), fecha_vencimiento: editando.fecha, lote: editando.lote, motivo: 'Corrección desde Vencimientos' });
+      if (editando.nombre.trim() && editando.nombre.trim() !== lote.producto_nombre) {
+        await updateProductoNombre(lote.codigo_barra, editando.nombre.trim());
       }
-      setOkMsg('Lote actualizado correctamente');
-      setEditandoId(null);
-      onRefresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    }, 'Lote actualizado correctamente');
   };
 
-  const eliminarLote = async (id, nombreProducto) => {
-    const confirmar = window.confirm(
-      `¿Seguro que querés eliminar este lote de "${nombreProducto}"?\nEsta acción no se puede deshacer.`
-    );
-    if (!confirmar) return;
-    try {
-      setLoading(true);
-      setError(null);
-      await deleteLote(id);
-      setOkMsg('Lote eliminado correctamente');
-      onRefresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const confirmarDescuento = (lote) => {
+    const n = Number(descontando.cantidad);
+    if (!Number.isInteger(n) || n <= 0) { setMsg({ error: 'Ingresá una cantidad válida' }); return; }
+    if (n > lote.cantidad) { setMsg({ error: `No podés descontar más de ${lote.cantidad} unidades` }); return; }
+    accion(() => updateLote(lote.id, { cantidad: lote.cantidad - n, tipo: 'SALIDA', motivo: 'Salida desde Vencimientos' }), `Se descontaron ${n} unidades`);
   };
 
-  const abrirDescuento = (lote) => {
-    setDescontandoId(lote.id);
-    setCantidadDescuento('');
-    setEditandoId(null);
-    setError(null);
-    setOkMsg(null);
+  const darDeBaja = (lote) => {
+    if (!window.confirm(`¿Dar de baja las ${lote.cantidad} unidades de "${lote.producto_nombre}" (vence ${formatoAR(lote.fecha_vencimiento)})?\nQueda registrado en Movimientos.`)) return;
+    accion(() => bajaLote(lote.id), `Se dieron de baja ${lote.cantidad} unidades`);
   };
 
-  const confirmarDescuento = async (lote) => {
-    const n = Number(cantidadDescuento);
-    if (!n || n <= 0) { setError('Ingresá una cantidad válida'); return; }
-    if (n > lote.cantidad) { setError(`No podés descontar más de ${lote.cantidad} unidades`); return; }
-    try {
-      setLoading(true);
-      setError(null);
-      await updateLote(lote.id, { cantidad: lote.cantidad - n });
-      setOkMsg(`Se descontaron ${n} unidades correctamente`);
-      setDescontandoId(null);
-      onRefresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const eliminar = (lote) => {
+    if (!window.confirm(`¿Eliminar este lote de "${lote.producto_nombre}"?\nUsalo solo para cargas por error (para vencidos usá "Dar de baja").`)) return;
+    accion(() => deleteLote(lote.id), 'Lote eliminado');
   };
 
   return (
     <div>
-      {error && <div className="alert-error">{error}</div>}
-      {okMsg && <div className="alert-info">{okMsg}</div>}
-
-      <table className="table-venc">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Producto</th>
-            <th>Cantidad</th>
-            <th>Vencimiento</th>
-            <th>Lote</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lotes.map((lote) => {
-            const dias = diasFaltan(lote.fecha_vencimiento);
-            let rowClass = 'row-green';
-            if (dias <= 30 && dias > 15) rowClass = 'row-yellow';
-            if (dias <= 15) rowClass = 'row-red';
-            const descripcion = dias >= 0 ? `Faltan ${dias} días` : `Vencido hace ${Math.abs(dias)} días`;
-            const estaEditando = editandoId === lote.id;
-            const estaDescontando = descontandoId === lote.id;
-
-            return (
-              <>
-                <tr key={lote.id} className={rowClass}>
-                  {/* Resaltamos código y nombre con el componente Highlight */}
-                  <td><Highlight texto={lote.codigo_barra} busqueda={busqueda} /></td>
-                  <td><Highlight texto={lote.producto_nombre} busqueda={busqueda} /></td>
-                  <td className="text-right">{lote.cantidad}</td>
-                  <td>{formatearFecha(lote.fecha_vencimiento)}</td>
-                  <td>{lote.lote || '-'}</td>
-                  <td>{descripcion}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <button type="button" style={{ fontSize: '12px', padding: '4px 10px' }}
-                        onClick={() => estaEditando ? setEditandoId(null) : abrirEdicion(lote)}
-                        disabled={loading}>
-                        {estaEditando ? 'Cancelar' : '✏️ Editar'}
-                      </button>
-                      <button type="button" style={{ fontSize: '12px', padding: '4px 10px' }}
-                        onClick={() => estaDescontando ? setDescontandoId(null) : abrirDescuento(lote)}
-                        disabled={loading}>
-                        {estaDescontando ? 'Cancelar' : '➖ Descontar'}
-                      </button>
-                      <button type="button"
-                        style={{ fontSize: '12px', padding: '4px 10px', borderColor: '#ef4444', color: '#fca5a5' }}
-                        onClick={() => eliminarLote(lote.id, lote.producto_nombre)}
-                        disabled={loading}>
-                        🗑️ Eliminar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-
-                {/* ── Fila de edición ── */}
-                {estaEditando && (
-                  <tr key={`edit-${lote.id}`}>
-                    <td colSpan="7" style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.08)' }}>
-                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <small>Nombre producto</small>
-                          <input type="text" value={editNombre}
-                            onChange={(e) => setEditNombre(e.target.value)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '160px' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <small>Cantidad</small>
-                          <input type="number" min="0" value={editCantidad}
-                            onChange={(e) => setEditCantidad(e.target.value)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '90px' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <small>Fecha vencimiento</small>
-                          <input type="date" value={editFecha}
-                            onChange={(e) => setEditFecha(e.target.value)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <small>N° Lote</small>
-                          <input type="text" value={editLote}
-                            onChange={(e) => setEditLote(e.target.value)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '110px' }} placeholder="Opcional" />
-                        </div>
-                        <button className="btn-primary" type="button"
-                          onClick={() => guardarEdicion(lote)}
-                          disabled={loading} style={{ fontSize: '13px' }}>
-                          {loading ? 'Guardando...' : '✅ Guardar'}
+      <Mensajes {...msg} />
+      <div className="tabla-scroll">
+        <table className="table-venc">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Cant.</th>
+              <th>Vencimiento</th>
+              <th>Lote</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lotes.map((lote) => {
+              const est = estadoVencimiento(lote.fecha_vencimiento, config);
+              const estaEditando = editando?.id === lote.id;
+              const estaDescontando = descontando?.id === lote.id;
+              return (
+                <Fragment key={lote.id}>
+                  <tr className={est.clase}>
+                    <td className="mono"><Highlight texto={lote.codigo_barra} busqueda={busqueda} /></td>
+                    <td><Highlight texto={lote.producto_nombre} busqueda={busqueda} /></td>
+                    <td className="text-right">{lote.cantidad}</td>
+                    <td>{formatoAR(lote.fecha_vencimiento)}</td>
+                    <td>{lote.lote || '-'}</td>
+                    <td><Semaforo fecha={lote.fecha_vencimiento} /></td>
+                    <td>
+                      <div className="acciones-linea">
+                        <button type="button" className="btn-mini" disabled={loading}
+                          onClick={() => (estaEditando ? setEditando(null) : (setDescontando(null), setEditando({ id: lote.id, cantidad: String(lote.cantidad), fecha: lote.fecha_vencimiento, lote: lote.lote || '', nombre: lote.producto_nombre || '' })))}>
+                          {estaEditando ? 'Cancelar' : '✏️ Editar'}
                         </button>
+                        <button type="button" className="btn-mini" disabled={loading}
+                          onClick={() => (estaDescontando ? setDescontando(null) : (setEditando(null), setDescontando({ id: lote.id, cantidad: '' })))}>
+                          {estaDescontando ? 'Cancelar' : '➖ Descontar'}
+                        </button>
+                        {est.nivel === 'vencido' && (
+                          <button type="button" className="btn-mini btn-peligro" disabled={loading} onClick={() => darDeBaja(lote)}>⛔ Dar de baja</button>
+                        )}
+                        <button type="button" className="btn-mini btn-peligro-suave" disabled={loading} onClick={() => eliminar(lote)} title="Eliminar lote cargado por error">🗑️</button>
                       </div>
                     </td>
                   </tr>
-                )}
 
-                {/* ── Fila de descuento ── */}
-                {estaDescontando && (
-                  <tr key={`desc-${lote.id}`}>
-                    <td colSpan="7" style={{ padding: '10px 14px', background: 'rgba(250,204,21,0.08)' }}>
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <small>Cantidad a descontar (máx: {lote.cantidad})</small>
-                          <input type="number" min="1" max={lote.cantidad}
-                            value={cantidadDescuento}
-                            onChange={(e) => setCantidadDescuento(e.target.value)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '90px' }} />
+                  {estaEditando && (
+                    <tr className="fila-edicion">
+                      <td colSpan="7">
+                        <div className="form-linea">
+                          <label>Nombre del producto
+                            <input type="text" value={editando.nombre} onChange={(e) => setEditando({ ...editando, nombre: e.target.value })} />
+                          </label>
+                          <label>Cantidad
+                            <input type="number" min="0" value={editando.cantidad} onChange={(e) => setEditando({ ...editando, cantidad: e.target.value })} style={{ width: 90 }} />
+                          </label>
+                          <label>Vencimiento
+                            <FechaInput valor={editando.fecha} onChange={(f) => setEditando({ ...editando, fecha: f })} />
+                          </label>
+                          <label>N° de lote
+                            <input type="text" value={editando.lote} onChange={(e) => setEditando({ ...editando, lote: e.target.value })} placeholder="Opcional" style={{ width: 120 }} />
+                          </label>
+                          <button className="btn-primary" type="button" onClick={() => guardarEdicion(lote)} disabled={loading}>
+                            {loading ? 'Guardando…' : '✅ Guardar'}
+                          </button>
                         </div>
-                        <button className="btn-primary" type="button"
-                          onClick={() => confirmarDescuento(lote)}
-                          disabled={loading} style={{ fontSize: '13px' }}>
-                          {loading ? 'Procesando...' : '✅ Confirmar'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </>
-            );
-          })}
-        </tbody>
-      </table>
+                      </td>
+                    </tr>
+                  )}
+
+                  {estaDescontando && (
+                    <tr className="fila-descuento">
+                      <td colSpan="7">
+                        <form className="form-linea" onSubmit={(e) => { e.preventDefault(); confirmarDescuento(lote); }}>
+                          <label>Cantidad a descontar (máx. {lote.cantidad})
+                            <input type="number" min="1" max={lote.cantidad} autoFocus value={descontando.cantidad} onChange={(e) => setDescontando({ ...descontando, cantidad: e.target.value })} style={{ width: 100 }} />
+                          </label>
+                          <button className="btn-primary" type="submit" disabled={loading}>{loading ? 'Procesando…' : '✅ Confirmar'}</button>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

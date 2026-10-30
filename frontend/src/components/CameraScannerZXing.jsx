@@ -37,7 +37,7 @@ export function CameraScannerZXing({ onResult, onClose }) {
         await reader.decodeFromVideoDevice(
           deviceId,
           videoRef.current,
-          (result, err) => {
+          (result) => {
             // err es normal mientras “busca”, no lo muestres como error
             if (result && !closedRef.current) {
                 closedRef.current = true;
@@ -49,7 +49,7 @@ export function CameraScannerZXing({ onResult, onClose }) {
                 // apagamos la lectura y cámara ANTES de cualquier otra cosa
                 try {
                     reader.reset();
-                } catch {}
+                } catch { /* ya estaba detenido */ }
 
                 // cerramos UI ya mismo
                 setScanning(false);
@@ -78,7 +78,7 @@ export function CameraScannerZXing({ onResult, onClose }) {
       closedRef.current = true;
       try {
         readerRef.current?.reset();
-      } catch {}
+      } catch { /* ya estaba detenido */ }
     };
   }, [onResult, onClose]);
 
@@ -115,7 +115,7 @@ export function CameraScannerZXing({ onResult, onClose }) {
             onClick={() => {
               try {
                 readerRef.current?.reset();
-              } catch {}
+              } catch { /* ya estaba detenido */ }
               onClose();
             }}
           >

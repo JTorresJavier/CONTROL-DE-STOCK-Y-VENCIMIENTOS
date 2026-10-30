@@ -22,6 +22,11 @@ function eanValido(codigo) {
 function parseNumero(txt) {
   let s = String(txt).replace(/[$\s]/g, '');
   if (!s) return null;
+  // OCR: "14.207.50" o "2,100,00" → el último separador seguido de 2 dígitos es el decimal
+  const partes = s.split(/[.,]/);
+  if (partes.length >= 3 && partes[partes.length - 1].length === 2 && partes.slice(1, -1).every((p) => p.length === 3)) {
+    return Number(partes.slice(0, -1).join('') + '.' + partes[partes.length - 1]);
+  }
   const ultimaComa = s.lastIndexOf(',');
   const ultimoPunto = s.lastIndexOf('.');
   if (ultimaComa > ultimoPunto) s = s.replace(/\./g, '').replace(',', '.');
@@ -62,7 +67,8 @@ const RE_FECHA_CON_PALABRA = /\b(?:vto|vence|venc(?:imiento)?|exp|cad)\.?\s*:?\s
 
 function extraerFechas(texto) {
   const encontradas = [];
-  let s = texto;
+  // OCR: la barra de "03/2027" a veces se lee como 7, 1, l o | → "0372027"
+  let s = texto.replace(/(?<![\d.,])(0[1-9]|1[0-2])[71lI|](20[2-4]\d)(?![\d.,])/g, '$1/$2');
   const m = s.match(RE_FECHA_CON_PALABRA);
   if (m) {
     const iso = parseFechaFlexible(m[1]);
@@ -106,7 +112,7 @@ function parsearLinea(original, opciones = {}) {
 
   // Precios: números con decimales (1.234,56 / 1234.56 / 12,50)
   const decimales = [];
-  s = s.replace(/(?<![\w.,])\$?\s?(\d{1,3}(?:\.\d{3})+,\d{1,2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d+[.,]\d{1,2})(?![\w.,])/g, (txt, num) => {
+  s = s.replace(/(?<![\w.,])\$?\s?(\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d+[.,]\d{1,2})(?![\w.,])/g, (txt, num) => {
     const n = parseNumero(num);
     if (n !== null) { decimales.push(n); return ' # '; }
     return txt;
@@ -227,10 +233,10 @@ function extraerEncabezado(lineas) {
 
   let numero = null;
   const mNum =
-    texto.match(/\b(\d{4,5}\s?-\s?\d{6,8})\b/) ||
+    texto.match(/\b(\d{4,5}\s?[-.]\s?\d{6,8})\b/) ||
     texto.match(/(?:remito|factura|comprobante)\s*(?:[a-z]\s+)?(?:n[°º.]?|nro\.?|numero)?\s*[:#]?\s*([a-z]?\s?\d[\d-]{3,})/i) ||
     texto.match(/\b(?:n[°º]|nro\.?)\s*[:#]?\s*(\d[\d-]{3,})/i);
-  if (mNum) numero = mNum[1].replace(/\s+/g, '').toUpperCase();
+  if (mNum) numero = mNum[1].replace(/\s+/g, '').replace(/^(\d{4,5})\.(\d{6,8})$/, '$1-$2').toUpperCase();
 
   let fechaDocumento = null;
   const mFecha = texto.match(/fecha(?:\s+de\s+emisi[oó]n)?\s*:?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})/i);

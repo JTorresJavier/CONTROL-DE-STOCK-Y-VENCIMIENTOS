@@ -1,211 +1,113 @@
 // src/routes/DashboardPage.jsx
-// Página de inicio con resumen general del estado del stock
-// Muestra estadísticas clave y los lotes más urgentes
-
-import { useEffect, useState, useMemo } from 'react';
-import { getLotesVencimientos, getProductos } from '../services/api';
-
-// ─── Helper: días que faltan para el vencimiento ──────────────────────────────
-function diasFaltan(fechaISO) {
-  const hoy = new Date();
-  const fv = new Date(fechaISO);
-  hoy.setHours(0, 0, 0, 0);
-  fv.setHours(0, 0, 0, 0);
-  return Math.round((fv - hoy) / (1000 * 60 * 60 * 24));
-}
-
-// ─── Helper: formatea fecha ISO a DD/MM/YYYY ──────────────────────────────────
-function formatFecha(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-}
-
-// ─── Tarjeta de estadística ───────────────────────────────────────────────────
-function StatCard({ titulo, valor, color, icono, subtitulo }) {
-  return (
-    <div style={{
-      background: 'radial-gradient(circle at top, #111827 0, #020617 55%)',
-      border: `1px solid ${color}33`,
-      borderRadius: '16px',
-      padding: '20px 24px',
-      flex: '1',
-      minWidth: '180px',
-      boxShadow: `0 4px 24px ${color}22`,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px'
-    }}>
-      <div style={{ fontSize: '28px' }}>{icono}</div>
-      <div style={{ fontSize: '36px', fontWeight: '700', color }}>{valor}</div>
-      <div style={{ fontSize: '14px', fontWeight: '600', color: '#e5e7eb' }}>{titulo}</div>
-      {subtitulo && <div style={{ fontSize: '12px', color: '#9ca3af' }}>{subtitulo}</div>}
-    </div>
-  );
-}
+// Inicio: semáforo de vencimientos, faltantes, lotes urgentes y accesos rápidos.
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { getResumen, cargarDemo } from '../services/api';
+import { estadoVencimiento, formatoAR, formatoFechaHora } from '../utils/fechas';
+import { Mensajes, Semaforo, Tarjeta, Vacio } from '../components/ui';
 
 export function DashboardPage() {
-  const [lotes, setLotes] = useState([]);
-  const [totalProductos, setTotalProductos] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [r, setR] = useState(null);
   const [error, setError] = useState(null);
+  const [ok, setOk] = useState(null);
+  const navegar = useNavigate();
 
-  // ─── Cargar datos al montar ───────────────────────────────────────────────
-  useEffect(() => {
-    const cargar = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const [lotesData, productosData] = await Promise.all([
-          getLotesVencimientos(),
-          getProductos()
-        ]);
-        setLotes(lotesData || []);
-        setTotalProductos((productosData || []).length);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    cargar();
-  }, []);
+  const cargar = useCallback(() => getResumen().then((d) => { setR(d); setError(null); }).catch((e) => setError(e.message)), []);
+  useEffect(() => { cargar(); }, [cargar]);
 
-  // ─── Estadísticas calculadas ──────────────────────────────────────────────
-  const stats = useMemo(() => {
-    const vencidos = lotes.filter((l) => diasFaltan(l.fecha_vencimiento) < 0);
-    const proximos15 = lotes.filter((l) => {
-      const d = diasFaltan(l.fecha_vencimiento);
-      return d >= 0 && d <= 15;
-    });
-    const proximos30 = lotes.filter((l) => {
-      const d = diasFaltan(l.fecha_vencimiento);
-      return d >= 0 && d <= 30;
-    });
-    const activos = lotes.length;
+  if (!r) {
+    return <div className="page"><div className="card card-ancha"><Mensajes error={error} />{!error && <p>Cargando…</p>}</div></div>;
+  }
 
-    return { vencidos, proximos15, proximos30, activos };
-  }, [lotes]);
-
-  // ─── Los 10 lotes más urgentes (próximos a vencer o ya vencidos) ──────────
-  const lotesUrgentes = useMemo(() => {
-    return [...lotes]
-      .sort((a, b) => new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento))
-      .slice(0, 10);
-  }, [lotes]);
+  const cfg = r.config;
+  const vacio = r.totales.productos === 0;
 
   return (
     <div className="page">
-      <div style={{ width: '100%', maxWidth: '1100px' }}>
-
-        {/* ── Título ── */}
-        <div style={{ marginBottom: '24px' }}>
-          <h2 style={{ margin: 0, fontSize: '24px' }}>👋 Bienvenido</h2>
-          <p style={{ color: '#9ca3af', margin: '4px 0 0' }}>
-            Resumen del estado actual del stock — {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
+      <div className="card-ancha">
+        <div className="saludo">
+          <div>
+            <h2>👋 Hola, {cfg.nombreNegocio}</h2>
+            <p className="muted">{new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+          <div className="acciones-rapidas">
+            <Link className="btn btn-primary" to="/importar">📥 Importar remito</Link>
+            <Link className="btn" to="/ingreso">📷 Ingreso con escáner</Link>
+            <Link className="btn" to="/salida">📤 Registrar salida</Link>
+          </div>
         </div>
 
-        {error && <div className="alert-error">{error}</div>}
-        {loading && <div className="alert-info">Cargando datos...</div>}
+        <Mensajes error={error} ok={ok} />
 
-        {/* ── Tarjetas de estadísticas ── */}
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          <StatCard
-            icono="📦"
-            titulo="Productos registrados"
-            valor={totalProductos}
-            color="#3b82f6"
-            subtitulo="Total en la base de datos"
-          />
-          <StatCard
-            icono="✅"
-            titulo="Lotes activos"
-            valor={stats.activos}
-            color="#22c55e"
-            subtitulo="Con stock disponible"
-          />
-          <StatCard
-            icono="⚠️"
-            titulo="Próximos a vencer"
-            valor={stats.proximos30.length}
-            color="#facc15"
-            subtitulo="En los próximos 30 días"
-          />
-          <StatCard
-            icono="🔴"
-            titulo="Lotes vencidos"
-            valor={stats.vencidos.length}
-            color="#ef4444"
-            subtitulo="Con stock todavía"
-          />
-        </div>
-
-        {/* ── Alerta si hay vencidos ── */}
-        {stats.vencidos.length > 0 && (
-          <div className="alert-error" style={{ marginBottom: '16px', fontSize: '14px' }}>
-            ⚠️ Hay <strong>{stats.vencidos.length}</strong> lote{stats.vencidos.length > 1 ? 's' : ''} vencido{stats.vencidos.length > 1 ? 's' : ''} con stock disponible. Revisalos en la pestaña <strong>Vencimientos</strong>.
+        {vacio && (
+          <div className="card bienvenida">
+            <h3>La base está vacía</h3>
+            <p>Empezá importando un remito o factura de tu proveedor, o cargá productos con el escáner.</p>
+            <p className="muted">¿Querés ver cómo funciona? Cargá productos de ejemplo (se pueden borrar después restaurando un respaldo).</p>
+            <button type="button" onClick={async () => {
+              try { const d = await cargarDemo(); setOk(d.message); cargar(); } catch (e) { setError(e.message); }
+            }}>Cargar datos de ejemplo</button>
           </div>
         )}
 
-        {/* ── Alerta si hay proximos en 15 dias ── */}
-        {stats.proximos15.length > 0 && (
-          <div style={{
-            background: 'rgba(250,204,21,0.1)',
-            border: '1px solid rgba(250,204,21,0.4)',
-            borderRadius: '10px',
-            padding: '10px 14px',
-            marginBottom: '16px',
-            fontSize: '14px',
-            color: '#fef08a'
-          }}>
-            ⚡ <strong>{stats.proximos15.length}</strong> lote{stats.proximos15.length > 1 ? 's' : ''} vence{stats.proximos15.length === 1 ? '' : 'n'} en los próximos <strong>15 días</strong>.
-          </div>
-        )}
+        <div className="tarjetas">
+          <Tarjeta icono="⛔" nivel="vencido" titulo="Vencidos con stock" valor={r.vencidos.lotes} detalle={`${r.vencidos.unidades} unidades`} onClick={() => navegar('/vencimientos?estado=vencido')} />
+          <Tarjeta icono="🔴" nivel="rojo" titulo={`Vencen en ${cfg.alertaRoja} días`} valor={r.rangos.rojo.lotes} detalle={`${r.rangos.rojo.unidades} unidades`} onClick={() => navegar('/vencimientos?estado=rojo')} />
+          <Tarjeta icono="🟠" nivel="naranja" titulo={`${cfg.alertaRoja + 1} a ${cfg.alertaNaranja} días`} valor={r.rangos.naranja.lotes} detalle={`${r.rangos.naranja.unidades} unidades`} onClick={() => navegar('/vencimientos?estado=naranja')} />
+          <Tarjeta icono="🟡" nivel="amarillo" titulo={`${cfg.alertaNaranja + 1} a ${cfg.alertaAmarilla} días`} valor={r.rangos.amarillo.lotes} detalle={`${r.rangos.amarillo.unidades} unidades`} onClick={() => navegar('/vencimientos?estado=amarillo')} />
+          <Tarjeta icono="📉" nivel="faltante" titulo="Bajo stock mínimo" valor={r.faltantes.total} detalle="productos para reponer" onClick={() => navegar('/productos?faltantes=1')} />
+          <Tarjeta icono="📦" nivel="azul" titulo="Productos" valor={r.totales.productos} detalle={`${r.totales.unidades} unidades en ${r.totales.lotes} lotes`} onClick={() => navegar('/productos')} />
+        </div>
 
-        {/* ── Tabla de lotes más urgentes ── */}
-        <div className="card">
-          <h3 style={{ margin: '0 0 12px' }}>🚨 Lotes más urgentes</h3>
-          <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '12px' }}>
-            Los 10 lotes con fechas de vencimiento más próximas
-          </p>
-
-          {lotesUrgentes.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No hay lotes cargados todavía.</p>
-          ) : (
-            <table className="table-venc">
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Cantidad</th>
-                  <th>Vencimiento</th>
-                  <th>Lote</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lotesUrgentes.map((lote) => {
-                  const dias = diasFaltan(lote.fecha_vencimiento);
-                  let rowClass = 'row-green';
-                  if (dias <= 30 && dias > 15) rowClass = 'row-yellow';
-                  if (dias <= 15) rowClass = 'row-red';
-                  return (
-                    <tr key={lote.id} className={rowClass}>
-                      <td>{lote.producto_nombre}</td>
-                      <td className="text-right">{lote.cantidad}</td>
-                      <td>{formatFecha(lote.fecha_vencimiento)}</td>
-                      <td>{lote.lote || '-'}</td>
-                      <td>
-                        {dias >= 0
-                          ? `Faltan ${dias} días`
-                          : `Vencido hace ${Math.abs(dias)} días`}
-                      </td>
+        <div className="dos-columnas">
+          <div className="card">
+            <h3>🚨 Lo más urgente</h3>
+            {r.urgentes.length === 0 ? <Vacio>No hay vencimientos en los próximos {cfg.alertaAmarilla} días. 🎉</Vacio> : (
+              <table className="table-venc">
+                <thead><tr><th>Producto</th><th>Cant.</th><th>Vence</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {r.urgentes.map((l) => (
+                    <tr key={l.id} className={estadoVencimiento(l.fecha_vencimiento, cfg).clase}>
+                      <td>{l.producto_nombre}{l.lote ? <small className="muted"> · {l.lote}</small> : null}</td>
+                      <td className="text-right">{l.cantidad}</td>
+                      <td>{formatoAR(l.fecha_vencimiento)}</td>
+                      <td><Semaforo fecha={l.fecha_vencimiento} /></td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <Link to="/vencimientos" className="link-mas">Ver todos los vencimientos →</Link>
+          </div>
+
+          <div className="columna">
+            <div className="card">
+              <h3>📉 Para reponer</h3>
+              {r.faltantes.lista.length === 0 ? <Vacio>Ningún producto está por debajo de su stock mínimo.</Vacio> : (
+                <ul className="lista-simple">
+                  {r.faltantes.lista.slice(0, 8).map((p) => (
+                    <li key={p.id}><span>{p.nombre}</span><span className={p.stock === 0 ? 'texto-error' : 'texto-warn'}>{p.stock} / {p.stock_minimo}</span></li>
+                  ))}
+                </ul>
+              )}
+              <Link to="/productos?faltantes=1" className="link-mas">Ver faltantes →</Link>
+            </div>
+
+            <div className="card">
+              <h3>📥 Últimas importaciones</h3>
+              {r.ultimasImportaciones.length === 0 ? <Vacio>Todavía no importaste remitos.</Vacio> : (
+                <ul className="lista-simple">
+                  {r.ultimasImportaciones.map((i) => (
+                    <li key={i.id}>
+                      <span>{i.proveedor_nombre || 'Sin proveedor'} <small className="muted">{[i.tipo_documento, i.numero].filter(Boolean).join(' ')}</small></span>
+                      <span className="muted">{i.estado === 'DESHECHA' ? 'deshecha' : `${i.total_unidades} u.`} · {formatoFechaHora(i.fecha).slice(0, 10)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link to="/importar" className="link-mas">Importar →</Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -1,146 +1,92 @@
 // src/services/api.js
-// Archivo central que maneja todas las llamadas al backend (Express en puerto 4000)
-// Detecta si está corriendo dentro de Electron o en navegador normal
+// Todas las llamadas al backend (Express en el puerto 4000).
 
 // ─── URL base de la API ───────────────────────────────────────────────────────
+// - Servida por el propio backend (app de escritorio o celular en la red): misma dirección → "/api"
+// - Abierta como archivo (file://): localhost:4000
+// - Servidor de desarrollo de Vite (npm run dev): mismo equipo, puerto 4000
 function getApiUrl() {
-  // En Electron la página se carga como archivo local (file://)
-  // En navegador normal usamos el hostname dinámico
-  const isElectron =
-    typeof window !== 'undefined' &&
-    (window.location.protocol === 'file:' ||
-      navigator.userAgent.toLowerCase().includes('electron'));
-
-  if (isElectron) {
-    return 'http://localhost:4000/api';
-  }
-
-  const API_HOST = window.location.hostname;
-  return `http://${API_HOST}:4000/api`;
+  if (typeof window === 'undefined') return '/api';
+  const { protocol, hostname } = window.location;
+  if (protocol === 'file:') return 'http://localhost:4000/api';
+  if (import.meta.env.DEV) return `${protocol}//${hostname}:4000/api`;
+  return '/api';
 }
 
 export const API_URL = getApiUrl();
 
-// ─── Helper para manejar respuestas ──────────────────────────────────────────
-// Si la respuesta no es OK, lanza un error con el mensaje del backend
-async function handleResponse(res) {
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    const message = errorBody.message || 'Error en la petición';
-    throw new Error(message);
+async function request(ruta, { method = 'GET', body, headers, raw } = {}) {
+  let res;
+  try {
+    res = await fetch(API_URL + ruta, {
+      method,
+      headers: raw ? headers : body !== undefined ? { 'Content-Type': 'application/json', ...headers } : headers,
+      body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('No se pudo conectar con el servidor. ¿Está abierta la aplicación en la PC?');
   }
-  return res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.message || 'Error en la petición');
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
 }
 
-// ─── PRODUCTOS ────────────────────────────────────────────────────────────────
+const qs = (params) => {
+  const s = new URLSearchParams(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
+  return s ? `?${s}` : '';
+};
 
-// Buscar producto por código de barras (usado al escanear)
-export async function getProductoByCodigo(codigoBarra) {
-  const res = await fetch(
-    `${API_URL}/productos/by-codigo/${encodeURIComponent(codigoBarra)}`
-  );
-  return handleResponse(res);
-}
+// ─── Productos ────────────────────────────────────────────────────────────────
+export const getProductos = (params) => request(`/productos${qs(params)}`);
+export const getProducto = (id) => request(`/productos/${id}`);
+export const getProductoByCodigo = (codigo) => request(`/productos/by-codigo/${encodeURIComponent(codigo)}`);
+export const searchProductos = async (q) => (q && q.trim() ? request(`/productos/search${qs({ q: q.trim() })}`) : []);
+export const createProducto = (datos) => request('/productos', { method: 'POST', body: datos });
+export const updateProducto = (id, datos) => request(`/productos/${id}`, { method: 'PUT', body: datos });
+export const deleteProducto = (id) => request(`/productos/${id}`, { method: 'DELETE' });
+export const updateProductoNombre = (codigoBarra, nombre, descripcion) =>
+  request(`/productos/by-codigo/${encodeURIComponent(codigoBarra)}`, { method: 'PUT', body: { nombre, descripcion } });
 
-// Crear un nuevo producto (cuando se escanea uno que no existe)
-export async function createProducto({ codigoBarra, nombre, descripcion }) {
-  const res = await fetch(`${API_URL}/productos`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigoBarra, nombre, descripcion })
-  });
-  return handleResponse(res);
-}
+// ─── Lotes ────────────────────────────────────────────────────────────────────
+export const createLotesBatch = (lotes) => request('/lotes/batch', { method: 'POST', body: { lotes } });
+export const getLotesVencimientos = () => request('/lotes/vencimientos');
+export const getTodosLotes = () => request('/lotes');
+export const getLotesByProducto = (productoId) => request(`/lotes/producto/${productoId}`);
+export const updateLote = (id, datos) => request(`/lotes/${id}`, { method: 'PUT', body: datos });
+export const bajaLote = (id, motivo) => request(`/lotes/${id}/baja`, { method: 'POST', body: { motivo } });
+export const deleteLote = (id) => request(`/lotes/${id}`, { method: 'DELETE' });
 
-// Buscar productos por texto (código o nombre) para el autocompletado
-export async function searchProductos(q) {
-  if (!q || !q.trim()) return [];
-  const res = await fetch(
-    `${API_URL}/productos/search?q=${encodeURIComponent(q.trim())}`
-  );
-  return handleResponse(res);
-}
+// ─── Stock y movimientos ──────────────────────────────────────────────────────
+export const registrarSalidaStock = (datos) => request('/stock/salida', { method: 'POST', body: datos });
+export const getMovimientos = (params) => request(`/movimientos${qs(params)}`);
 
-// Actualizar nombre y descripción de un producto por código de barras
-export async function updateProductoNombre(codigoBarra, nombre, descripcion) {
-  const res = await fetch(
-    `${API_URL}/productos/by-codigo/${encodeURIComponent(codigoBarra)}`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, descripcion })
-    }
-  );
-  return handleResponse(res);
-}
+// ─── Proveedores ──────────────────────────────────────────────────────────────
+export const getProveedores = () => request('/proveedores');
+export const createProveedor = (datos) => request('/proveedores', { method: 'POST', body: datos });
+export const updateProveedor = (id, datos) => request(`/proveedores/${id}`, { method: 'PUT', body: datos });
+export const deleteProveedor = (id) => request(`/proveedores/${id}`, { method: 'DELETE' });
 
-// Obtener todos los productos (para la tabla de admin)
-export async function getProductos() {
-  const res = await fetch(`${API_URL}/productos`);
-  return handleResponse(res);
-}
+// ─── Importación de remitos / facturas ────────────────────────────────────────
+export const analizarDocumento = (contenido) => request('/importaciones/analizar', { method: 'POST', body: contenido });
+export const confirmarImportacion = (datos) => request('/importaciones', { method: 'POST', body: datos });
+export const getImportaciones = () => request('/importaciones');
+export const getImportacion = (id) => request(`/importaciones/${id}`);
+export const deshacerImportacion = (id) => request(`/importaciones/${id}/deshacer`, { method: 'POST' });
 
-// ─── LOTES ────────────────────────────────────────────────────────────────────
-
-// Guardar varios lotes a la vez (al terminar el ingreso de mercadería)
-export async function createLotesBatch(lotes) {
-  const res = await fetch(`${API_URL}/lotes/batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lotes })
-  });
-  return handleResponse(res);
-}
-
-// Obtener todos los lotes activos con info de vencimiento
-export async function getLotesVencimientos() {
-  const res = await fetch(`${API_URL}/lotes/vencimientos`);
-  return handleResponse(res);
-}
-
-// Obtener todos los lotes (sin filtro de cantidad)
-export async function getTodosLotes() {
-  const res = await fetch(`${API_URL}/lotes`);
-  return handleResponse(res);
-}
-
-// Obtener lotes activos de un producto específico
-export async function getLotesByProducto(productoId) {
-  const res = await fetch(`${API_URL}/lotes/producto/${productoId}`);
-  return handleResponse(res);
-}
-
-// Editar cantidad, fecha de vencimiento o número de lote
-export async function updateLote(id, datos) {
-  const res = await fetch(`${API_URL}/lotes/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(datos)
-  });
-  return handleResponse(res);
-}
-
-// Eliminar un lote por ID (para corregir errores de carga)
-export async function deleteLote(id) {
-  const res = await fetch(`${API_URL}/lotes/${id}`, {
-    method: 'DELETE'
-  });
-  return handleResponse(res);
-}
-
-// ─── STOCK ────────────────────────────────────────────────────────────────────
-
-// Registrar salida de stock usando lógica FEFO (primero vence, primero sale)
-export async function registrarSalidaStock({
-  codigoBarra,
-  cantidad,
-  origen,
-  observacion
-}) {
-  const res = await fetch(`${API_URL}/stock/salida`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigoBarra, cantidad, origen, observacion })
-  });
-  return handleResponse(res);
-}
+// ─── Sistema ──────────────────────────────────────────────────────────────────
+export const getResumen = () => request('/resumen');
+export const getConfig = () => request('/config');
+export const guardarConfig = (datos) => request('/config', { method: 'PUT', body: datos });
+export const getInfo = () => request('/info');
+export const cargarDemo = () => request('/demo', { method: 'POST' });
+export const getRespaldosAutomaticos = () => request('/backup/automaticos');
+export const crearRespaldo = () => request('/backup/automaticos', { method: 'POST' });
+export const restaurarAutomatico = (nombre) => request('/backup/automaticos/restaurar', { method: 'POST', body: { nombre } });
+export const restaurarRespaldo = (archivo) =>
+  request('/backup/restaurar', { method: 'POST', raw: true, body: archivo, headers: { 'Content-Type': 'application/octet-stream' } });
+export const urlDescargaRespaldo = () => `${API_URL}/backup`;

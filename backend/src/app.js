@@ -16,7 +16,7 @@ app.use(cors());
 // La restauración de copias recibe el archivo crudo; el resto, JSON
 app.use((req, res, next) => (req.path === '/api/backup/restaurar' ? next() : express.json({ limit: '25mb' })(req, res, next)));
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) => res.json({ ok: true, app: 'control-stock' }));
 app.use('/api/productos', productosRoutes);
 app.use('/api/lotes', lotesRoutes);
 app.use('/api', stockRoutes);
@@ -27,8 +27,18 @@ app.use('/api', (req, res) => res.status(404).json({ message: 'Ruta no encontrad
 // La misma app web se sirve desde acá (Electron y celulares en la red local)
 const frontend = process.env.FRONTEND_DIST || path.join(__dirname, '..', '..', 'frontend', 'dist');
 if (fs.existsSync(path.join(frontend, 'index.html'))) {
-  app.use(express.static(frontend, { index: 'index.html', maxAge: '1h' }));
-  app.get(/^(?!\/api).*/, (req, res) => res.sendFile(path.join(frontend, 'index.html')));
+  // index.html nunca se guarda en caché (si no, después de actualizar la app se vería la versión vieja);
+  // los archivos de /assets llevan un hash en el nombre y sí se pueden guardar
+  app.use(express.static(frontend, {
+    index: 'index.html',
+    setHeaders: (res, archivo) => {
+      res.setHeader('Cache-Control', archivo.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  }));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(frontend, 'index.html'));
+  });
 }
 
 // Errores: mensaje claro en español, sin detalles internos

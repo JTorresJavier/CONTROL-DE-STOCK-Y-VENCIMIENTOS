@@ -99,6 +99,33 @@ test('planilla (Excel/CSV) con encabezados y fecha como número de Excel', () =>
   assert.equal(r.numero, '0001-00004567');
 });
 
+test('texto de OCR real (PDF escaneado) con errores típicos de lectura', () => {
+  // Salida real de Tesseract sobre muestras/remito-escaneado.pdf
+  const ocr = `DROGUERIA DEL SUR S.A.                                    REMITO
+;       N                                  R                 N" 0003-00012345
+Av. Siempre Viva 1234 - CABA                                 Fecha: 28/10/2026
+Código    | EAN                 | Descripción                 Cant.     Lote         Vto.        P. Unit.       Importe
+10231        | 7799000001010           IBUPROFENO 400 MG X 20 COMP        12 L2401A        12/2027            1.850,50        22.206,00
+10233       | 7799000001034          AMOXICILINA 500 MG X 16 CAPS        6 AMX8683       0372027           4.210,00        25.260.00
+19240       | 7799000001041           PARACETAMOL 500 MG X 20 COMP      24 P77812        08/2028              390.00        23.760,00
+10251        |                              IBUPROF. 600MG X10 COMPRIMIDOS    10 1B6-22          05/2027            1.420.75        14.207.50
+10260        |                               OMEPRAZOL 20MG X 14 CAPSULAS        8 OM2045        11/2027            2.350,00         18.800,00
+10270       | 7799000001089          ALCOHOL EN GEL 250 ML                20 AG551        0172029            1.500,00        30.000,00
+20011       | 7799000002017          CETIRIZINA 10 MG X 10 COMP           6 CT1102        0972027           2100.00        12.600,00
+209012       | 7799000002024          VITAMINA C 1 GX 10 EFERVESCENTES     15 vC9NO1        02/2028            3.200.00        48.000,00
+20013       | 7799000002031           GASAS ESTERILES 10X10 X 10 UNIDADES     30 GZ0077                      650.00        19.500,00
+Total unidades: 131
+Recibí conforme:`;
+  const r = parsearTexto(ocr);
+  assert.equal(r.numero, '0003-00012345');
+  assert.equal(r.lineas.length, 9);
+  assert.deepEqual(r.lineas.map((l) => l.cantidad), [12, 6, 24, 10, 8, 20, 6, 15, 30]);
+  assert.equal(r.lineas[1].vencimiento, '2027-03-31');
+  assert.equal(r.lineas[5].vencimiento, '2029-01-31');
+  assert.equal(r.lineas[3].descripcion, 'IBUPROF. 600MG X10 COMPRIMIDOS');
+  assert.equal(r.lineas.filter((l) => !l.vencimiento).length, 1); // solo las gasas
+});
+
 test('nombres parecidos se reconocen y dosis distintas no', () => {
   const a = normalizar('Ibuprofeno 600 mg x 10 comprimidos');
   assert.ok(similitud(a, normalizar('IBUPROF. 600MG X10 COMPRIMIDOS')) >= 0.82);
