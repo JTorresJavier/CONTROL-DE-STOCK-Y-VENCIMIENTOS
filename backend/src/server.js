@@ -1,46 +1,28 @@
 // src/server.js
+// Levanta la API (y la app web) en el puerto 4000. Electron lo carga al iniciar.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-// Importamos express para crear el servidor HTTP
-const express = require('express');
-// cors permite que React (otro puerto) pueda llamar a esta API
-const cors = require('cors');
-// Importamos las rutas de productos y lotes
-const productosRoutes = require('./routes/productos.routes');
-// Importamos las rutas de lotes
-const lotesRoutes = require('./routes/lotes.routes');
-// Cargamos variables de entorno (.env)
-require('dotenv').config();
-// Importamos las rutas de stock
-const stockRoutes = require('./routes/stock.routes');
+const app = require('./app');
+const { respaldoAutomatico } = require('./controllers/sistema.controller');
 
-// Creamos la app de Express
-const app = express();
+const PORT = Number(process.env.PORT) || 4000;
 
-// Tomamos el puerto desde .env o usamos 4000
-const PORT = process.env.PORT || 4000;
-
-// Middleware para permitir CORS (acceso desde el frontend)
-app.use(cors());
-
-// Middleware para poder leer JSON en el body de las requests
-app.use(express.json());
-
-// Montamos las rutas de productos bajo /api/productos
-app.use('/api/productos', productosRoutes);
-
-// Montamos las rutas de lotes bajo /api/lotes
-app.use('/api/lotes', lotesRoutes);
-
-// Montamos las rutas de productos bajo /api/productos
-app.use('/api', productosRoutes);
-
-// Montamos las rutas de lotes bajo /api/lotes
-app.use('/api', lotesRoutes);
-
-// Montamos las rutas de stock bajo /api
-app.use('/api', stockRoutes);
-
-// Levantamos el servidor
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
 });
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`El puerto ${PORT} ya está en uso. ¿Hay otra ventana de la app abierta?`);
+  } else {
+    console.error('Error del servidor:', err);
+  }
+  server.errorInicio = err;
+});
+
+// Copia de seguridad automática al iniciar y una vez por día
+const respaldar = () => respaldoAutomatico('auto').catch((e) => console.error('No se pudo crear el respaldo automático:', e.message));
+setTimeout(respaldar, 5000).unref();
+setInterval(respaldar, 24 * 60 * 60 * 1000).unref();
+
+module.exports = server;
