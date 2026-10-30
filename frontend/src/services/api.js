@@ -1,27 +1,28 @@
 // src/services/api.js
+// Archivo central que maneja todas las llamadas al backend (Express en puerto 4000)
+// Detecta si está corriendo dentro de Electron o en navegador normal
 
-// Detectamos si estamos corriendo dentro de Electron (cargado como archivo)
-// o en el navegador normal (dev con Vite o build servido desde web)
+// ─── URL base de la API ───────────────────────────────────────────────────────
 function getApiUrl() {
-  // En Electron el protocolo es "file:" o la URL tiene electron en el user agent
+  // En Electron la página se carga como archivo local (file://)
+  // En navegador normal usamos el hostname dinámico
   const isElectron =
     typeof window !== 'undefined' &&
     (window.location.protocol === 'file:' ||
       navigator.userAgent.toLowerCase().includes('electron'));
 
   if (isElectron) {
-    // Dentro de Electron el backend Express corre en localhost:4000
     return 'http://localhost:4000/api';
   }
 
-  // En navegador normal (dev o deploy web) usamos el hostname dinámico
   const API_HOST = window.location.hostname;
   return `http://${API_HOST}:4000/api`;
 }
 
 export const API_URL = getApiUrl();
 
-// Función para manejar respuestas y errores
+// ─── Helper para manejar respuestas ──────────────────────────────────────────
+// Si la respuesta no es OK, lanza un error con el mensaje del backend
 async function handleResponse(res) {
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
@@ -31,7 +32,9 @@ async function handleResponse(res) {
   return res.json().catch(() => ({}));
 }
 
-// Buscar producto por código de barras
+// ─── PRODUCTOS ────────────────────────────────────────────────────────────────
+
+// Buscar producto por código de barras (usado al escanear)
 export async function getProductoByCodigo(codigoBarra) {
   const res = await fetch(
     `${API_URL}/productos/by-codigo/${encodeURIComponent(codigoBarra)}`
@@ -39,7 +42,7 @@ export async function getProductoByCodigo(codigoBarra) {
   return handleResponse(res);
 }
 
-// Crear un nuevo producto
+// Crear un nuevo producto (cuando se escanea uno que no existe)
 export async function createProducto({ codigoBarra, nombre, descripcion }) {
   const res = await fetch(`${API_URL}/productos`, {
     method: 'POST',
@@ -49,29 +52,7 @@ export async function createProducto({ codigoBarra, nombre, descripcion }) {
   return handleResponse(res);
 }
 
-// Guardar varios lotes en batch
-export async function createLotesBatch(lotes) {
-  const res = await fetch(`${API_URL}/lotes/batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lotes })
-  });
-  return handleResponse(res);
-}
-
-// Obtener lotes por vencer en X días
-export async function getLotesVencimientos(dias = 30) {
-  const res = await fetch(`${API_URL}/lotes/vencimientos?dias=${dias}`);
-  return handleResponse(res);
-}
-
-// Obtener TODOS los lotes (sin límite de días)
-export async function getTodosLotes() {
-  const res = await fetch(`${API_URL}/lotes`);
-  return handleResponse(res);
-}
-
-// Buscar productos por texto (código o nombre)
+// Buscar productos por texto (código o nombre) para el autocompletado
 export async function searchProductos(q) {
   if (!q || !q.trim()) return [];
   const res = await fetch(
@@ -80,7 +61,7 @@ export async function searchProductos(q) {
   return handleResponse(res);
 }
 
-// Actualizar nombre (y opcionalmente descripción) por código
+// Actualizar nombre y descripción de un producto por código de barras
 export async function updateProductoNombre(codigoBarra, nombre, descripcion) {
   const res = await fetch(
     `${API_URL}/productos/by-codigo/${encodeURIComponent(codigoBarra)}`,
@@ -93,13 +74,63 @@ export async function updateProductoNombre(codigoBarra, nombre, descripcion) {
   return handleResponse(res);
 }
 
-// Lotes activos de un producto
+// Obtener todos los productos (para la tabla de admin)
+export async function getProductos() {
+  const res = await fetch(`${API_URL}/productos`);
+  return handleResponse(res);
+}
+
+// ─── LOTES ────────────────────────────────────────────────────────────────────
+
+// Guardar varios lotes a la vez (al terminar el ingreso de mercadería)
+export async function createLotesBatch(lotes) {
+  const res = await fetch(`${API_URL}/lotes/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lotes })
+  });
+  return handleResponse(res);
+}
+
+// Obtener todos los lotes activos con info de vencimiento
+export async function getLotesVencimientos() {
+  const res = await fetch(`${API_URL}/lotes/vencimientos`);
+  return handleResponse(res);
+}
+
+// Obtener todos los lotes (sin filtro de cantidad)
+export async function getTodosLotes() {
+  const res = await fetch(`${API_URL}/lotes`);
+  return handleResponse(res);
+}
+
+// Obtener lotes activos de un producto específico
 export async function getLotesByProducto(productoId) {
   const res = await fetch(`${API_URL}/lotes/producto/${productoId}`);
   return handleResponse(res);
 }
 
-// Registrar salida de stock
+// Editar cantidad, fecha de vencimiento o número de lote
+export async function updateLote(id, datos) {
+  const res = await fetch(`${API_URL}/lotes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos)
+  });
+  return handleResponse(res);
+}
+
+// Eliminar un lote por ID (para corregir errores de carga)
+export async function deleteLote(id) {
+  const res = await fetch(`${API_URL}/lotes/${id}`, {
+    method: 'DELETE'
+  });
+  return handleResponse(res);
+}
+
+// ─── STOCK ────────────────────────────────────────────────────────────────────
+
+// Registrar salida de stock usando lógica FEFO (primero vence, primero sale)
 export async function registrarSalidaStock({
   codigoBarra,
   cantidad,
@@ -111,11 +142,5 @@ export async function registrarSalidaStock({
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ codigoBarra, cantidad, origen, observacion })
   });
-  return handleResponse(res);
-}
-
-// Obtener TODOS los productos
-export async function getProductos() {
-  const res = await fetch(`${API_URL}/productos`);
   return handleResponse(res);
 }

@@ -1,117 +1,69 @@
 // src/controllers/productos.controller.js
+const db = require('../db');
 
-// Importamos el pool de conexiones a MySQL
-const pool = require('../db');
-
-// Controlador para GET /api/productos
-const getProductos = async (req, res) => {
+const getProductos = (req, res) => {
   try {
-    // Hacemos un SELECT a la tabla productos
-    const [rows] = await pool.query('SELECT * FROM productos ORDER BY nombre');
-    // Respondemos con el array de productos
+    const rows = db.prepare('SELECT * FROM productos ORDER BY nombre').all();
     res.json(rows);
   } catch (err) {
-    // Si algo falla, lo logueamos en consola
     console.error('Error al obtener productos:', err);
-    // Respondemos con error 500
     res.status(500).json({ message: 'Error al obtener productos' });
   }
 };
 
-// Controlador para GET /api/productos/by-codigo/:codigoBarra
-const getProductoByCodigo = async (req, res) => {
+const getProductoByCodigo = (req, res) => {
   try {
-    // Tomamos el código de barras desde los parámetros de ruta
     const { codigoBarra } = req.params;
-
-    // Buscamos el producto con ese código
-    const [rows] = await pool.query(
-      'SELECT * FROM productos WHERE codigo_barra = ?',
-      [codigoBarra]
-    );
-
-    // Si no hay resultados, devolvemos 404
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'Producto no encontrado' });
-    }
-
-    // Si existe, devolvemos el primer producto
-    res.json(rows[0]);
+    const row = db.prepare('SELECT * FROM productos WHERE codigo_barra = ?').get(codigoBarra);
+    if (!row) return res.status(404).json({ message: 'Producto no encontrado' });
+    res.json(row);
   } catch (err) {
-    console.error('Error al buscar producto por código:', err);
+    console.error('Error al buscar producto:', err);
     res.status(500).json({ message: 'Error al buscar producto' });
   }
 };
 
-// Controlador para POST /api/productos
-const createProducto = async (req, res) => {
+const createProducto = (req, res) => {
   try {
-    // Extraemos datos del body
     const { codigoBarra, nombre, descripcion } = req.body;
-
-    // Validamos que existan los campos requeridos
     if (!codigoBarra || !nombre) {
-      return res
-        .status(400)
-        .json({ message: 'codigoBarra y nombre son obligatorios' });
+      return res.status(400).json({ message: 'codigoBarra y nombre son obligatorios' });
     }
 
-    // Verificamos si ya hay un producto con ese código
-    const [existe] = await pool.query(
-      'SELECT id FROM productos WHERE codigo_barra = ?',
-      [codigoBarra]
-    );
-
-    // Si ya existe, devolvemos 409 (conflict)
-    if (existe.length > 0) {
-      return res
-        .status(409)
-        .json({ message: 'Ya existe un producto con ese código de barras' });
+    const existe = db.prepare('SELECT id FROM productos WHERE codigo_barra = ?').get(codigoBarra);
+    if (existe) {
+      return res.status(409).json({ message: 'Ya existe un producto con ese código de barras' });
     }
 
-    // Insertamos el producto en la tabla
-    const [result] = await pool.query(
-      'INSERT INTO productos (codigo_barra, nombre, descripcion) VALUES (?, ?, ?)',
-      [codigoBarra, nombre, descripcion || null]
-    );
+    const result = db.prepare(
+      'INSERT INTO productos (codigo_barra, nombre, descripcion) VALUES (?, ?, ?)'
+    ).run(codigoBarra, nombre, descripcion || null);
 
-    // Armamos el objeto del nuevo producto para devolver
-    const nuevoProducto = {
-      id: result.insertId,
+    res.status(201).json({
+      id: result.lastInsertRowid,
       codigo_barra: codigoBarra,
       nombre,
       descripcion: descripcion || null
-    };
-
-    // Respondemos con 201 (creado) y el producto
-    res.status(201).json(nuevoProducto);
+    });
   } catch (err) {
     console.error('Error al crear producto:', err);
     res.status(500).json({ message: 'Error al crear producto' });
   }
 };
 
-// Buscar productos por texto (código o nombre)
-const searchProductos = async (req, res) => {
+const searchProductos = (req, res) => {
   try {
     const q = (req.query.q || '').trim();
-
-    if (!q) {
-      return res.json([]);
-    }
+    if (!q) return res.json([]);
 
     const like = `%${q}%`;
-
-    const [rows] = await pool.query(
-      `
+    const rows = db.prepare(`
       SELECT id, codigo_barra, nombre, descripcion
       FROM productos
       WHERE codigo_barra LIKE ? OR nombre LIKE ?
       ORDER BY nombre
       LIMIT 20
-      `,
-      [like, like]
-    );
+    `).all(like, like);
 
     res.json(rows);
   } catch (err) {
@@ -120,46 +72,29 @@ const searchProductos = async (req, res) => {
   }
 };
 
-// Actualizar nombre (y opcionalmente descripción) por código de barras
-const updateProductoByCodigo = async (req, res) => {
+const updateProductoByCodigo = (req, res) => {
   try {
     const { codigoBarra } = req.params;
     const { nombre, descripcion } = req.body;
 
     if (!nombre) {
-      return res
-        .status(400)
-        .json({ message: 'El nombre es obligatorio para actualizar' });
+      return res.status(400).json({ message: 'El nombre es obligatorio para actualizar' });
     }
 
-    const [existe] = await pool.query(
-      'SELECT id, codigo_barra, nombre, descripcion FROM productos WHERE codigo_barra = ?',
-      [codigoBarra]
-    );
+    const existe = db.prepare('SELECT * FROM productos WHERE codigo_barra = ?').get(codigoBarra);
+    if (!existe) return res.status(404).json({ message: 'Producto no encontrado' });
 
-    if (existe.length === 0) {
-      return res.status(404).json({ message: 'Producto no encontrado' });
-    }
+    db.prepare(
+      'UPDATE productos SET nombre = ?, descripcion = ? WHERE codigo_barra = ?'
+    ).run(nombre, descripcion || null, codigoBarra);
 
-    await pool.query(
-      'UPDATE productos SET nombre = ?, descripcion = ? WHERE codigo_barra = ?',
-      [nombre, descripcion || null, codigoBarra]
-    );
-
-    const actualizado = {
-      ...existe[0],
-      nombre,
-      descripcion: descripcion || null
-    };
-
-    res.json(actualizado);
+    res.json({ ...existe, nombre, descripcion: descripcion || null });
   } catch (err) {
     console.error('Error al actualizar producto:', err);
     res.status(500).json({ message: 'Error al actualizar producto' });
   }
 };
 
-// Exportamos los controladores
 module.exports = {
   getProductos,
   getProductoByCodigo,

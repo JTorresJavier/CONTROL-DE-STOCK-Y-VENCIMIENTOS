@@ -1,423 +1,326 @@
 // src/routes/AdminPage.jsx
+// Panel de reportes y exportación
+// Permite filtrar lotes por estado y exportar a Excel o PDF
 
-// Importamos hooks de React
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { getLotesVencimientos } from '../services/api';
 
-// Importamos funciones de nuestra API
-import { getProductos, searchProductos, updateProductoNombre } from '../services/api';
+// ─── Helper: días que faltan para el vencimiento ──────────────────────────────
+function diasFaltan(fechaISO) {
+  const hoy = new Date();
+  const fv = new Date(fechaISO);
+  hoy.setHours(0, 0, 0, 0);
+  fv.setHours(0, 0, 0, 0);
+  return Math.round((fv - hoy) / (1000 * 60 * 60 * 24));
+}
+
+// ─── Helper: formatea fecha ISO a DD/MM/YYYY ──────────────────────────────────
+function formatFecha(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+// ─── Helper: convierte fecha a YYYY-MM-DD para inputs ────────────────────────
+function toInputDate(fecha) {
+  if (!fecha) return '';
+  return String(fecha).split('T')[0];
+}
 
 export function AdminPage() {
-  // =========================
-  // ESTADOS PRINCIPALES
-  // =========================
-
-  // Texto del input de búsqueda
-  const [query, setQuery] = useState('');
-
-  // Lista de sugerencias (autocompletado) que devuelve /productos/search
-  const [sugerencias, setSugerencias] = useState([]);
-
-  // Producto seleccionado para editar (objeto)
-  const [seleccionado, setSeleccionado] = useState(null);
-
-  // Campos del formulario de edición
-  const [nuevoNombre, setNuevoNombre] = useState('');
-  const [nuevaDescripcion, setNuevaDescripcion] = useState('');
-
-  // Mensajes para UI
-  const [mensaje, setMensaje] = useState(null);
+  // Lista completa de lotes del backend
+  const [lotes, setLotes] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Loading para guardar cambios
-  const [loading, setLoading] = useState(false);
+  // ── Filtros ──
+  // Filtro por estado: 'todos', 'proximos15', 'proximos30', 'proximos60', 'vencidos'
+  const [filtroEstado, setFiltroEstado] = useState('todos');
 
-  // =========================
-  // TABLA GENERAL
-  // =========================
+  // Filtro por rango de fechas de vencimiento
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
 
-  // Todos los productos de la BD (tabla)
-  const [productos, setProductos] = useState([]);
+  // Búsqueda por nombre de producto
+  const [busqueda, setBusqueda] = useState('');
 
-  // Loading para cargar/refrescar tabla
-  const [loadingTabla, setLoadingTabla] = useState(false);
-
-  // Orden de la tabla
-  const [sortKey, setSortKey] = useState('nombre'); // 'nombre' | 'codigo_barra' | 'id'
-  const [sortDir, setSortDir] = useState('asc');    // 'asc' | 'desc'
-
-  // Paginación simple
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
-
-  // =========================
-  // CARGA INICIAL DE TABLA
-  // =========================
+  // ─── Cargar lotes al montar ───────────────────────────────────────────────
   useEffect(() => {
-    // Función async dentro del effect para poder usar await
-    const load = async () => {
+    const cargar = async () => {
       try {
+        setLoading(true);
         setError(null);
-        setLoadingTabla(true);
-
-        // Traemos todos los productos
-        const data = await getProductos();
-
-        // Guardamos el resultado en estado
-        setProductos(data || []);
+        const data = await getLotesVencimientos();
+        setLotes(data || []);
       } catch (err) {
         setError(err.message);
       } finally {
-        setLoadingTabla(false);
+        setLoading(false);
       }
     };
-
-    load();
+    cargar();
   }, []);
 
-  // Botón para refrescar tabla sin recargar la página
-  const refrescarTabla = async () => {
-    try {
-      setError(null);
-      setLoadingTabla(true);
-      const data = await getProductos();
-      setProductos(data || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoadingTabla(false);
-    }
-  };
+  // ─── Aplicar filtros sobre los lotes ─────────────────────────────────────
+  const lotesFiltrados = useMemo(() => {
+    return lotes.filter((lote) => {
+      const dias = diasFaltan(lote.fecha_vencimiento);
+      const fv = new Date(lote.fecha_vencimiento);
 
-  // =========================
-  // BUSCAR MIENTRAS ESCRIBE
-  // =========================
-  const handleChangeQuery = async (e) => {
-    const value = e.target.value;        // leemos lo que escribió
-    setQuery(value);                      // actualizamos el input
-    setMensaje(null);                     // limpiamos mensaje
-    setError(null);                       // limpiamos error
+      // Filtro por estado
+      if (filtroEstado === 'vencidos' && dias >= 0) return false;
+      if (filtroEstado === 'proximos15' && (dias < 0 || dias > 15)) return false;
+      if (filtroEstado === 'proximos30' && (dias < 0 || dias > 30)) return false;
+      if (filtroEstado === 'proximos60' && (dias < 0 || dias > 60)) return false;
 
-    // Si hay menos de 2 caracteres, no buscamos
-    if (!value || value.trim().length < 2) {
-      setSugerencias([]);                 // borramos sugerencias
-      return;
-    }
-
-    try {
-      // Llamamos al endpoint /productos/search
-      const results = await searchProductos(value);
-
-      // Guardamos sugerencias en estado
-      setSugerencias(results || []);
-    } catch (err) {
-      setError(err.message);
-      setSugerencias([]);
-    }
-  };
-
-  // Enter (útil para lector USB) -> busca y si hay 1 resultado lo selecciona
-  const handleKeyDown = async (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-
-      // Si está vacío, no hacemos nada
-      if (!query.trim()) return;
-
-      try {
-        const results = await searchProductos(query);
-        setSugerencias(results || []);
-
-        // Si hay un solo resultado, lo seleccionamos
-        if (results && results.length === 1) {
-          seleccionarProducto(results[0]);
-        }
-      } catch (err) {
-        setError(err.message);
+      // Filtro por fecha desde
+      if (fechaDesde) {
+        const desde = new Date(fechaDesde);
+        if (fv < desde) return false;
       }
-    }
+
+      // Filtro por fecha hasta
+      if (fechaHasta) {
+        const hasta = new Date(fechaHasta);
+        if (fv > hasta) return false;
+      }
+
+      // Filtro por búsqueda de nombre o código
+      if (busqueda.trim()) {
+        const q = busqueda.trim().toLowerCase();
+        if (
+          !lote.producto_nombre?.toLowerCase().includes(q) &&
+          !lote.codigo_barra?.toLowerCase().includes(q)
+        ) return false;
+      }
+
+      return true;
+    });
+  }, [lotes, filtroEstado, fechaDesde, fechaHasta, busqueda]);
+
+  // ─── Exportar a Excel ─────────────────────────────────────────────────────
+  const exportarExcel = () => {
+    // Armamos los datos con los campos que queremos exportar
+    const datos = lotesFiltrados.map((l) => ({
+      'Código barras': l.codigo_barra,
+      'Producto': l.producto_nombre,
+      'Cantidad': l.cantidad,
+      'Fecha vencimiento': formatFecha(l.fecha_vencimiento),
+      'N° Lote': l.lote || '-',
+      'Días restantes': diasFaltan(l.fecha_vencimiento),
+      'Estado': diasFaltan(l.fecha_vencimiento) >= 0
+        ? `Faltan ${diasFaltan(l.fecha_vencimiento)} días`
+        : `Vencido hace ${Math.abs(diasFaltan(l.fecha_vencimiento))} días`
+    }));
+
+    // Creamos el libro y la hoja de Excel
+    const hoja = XLSX.utils.json_to_sheet(datos);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Vencimientos');
+
+    // Nombre del archivo con fecha de hoy
+    const hoy = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(libro, `vencimientos_${hoy}.xlsx`);
   };
 
-  // =========================
-  // SELECCIONAR PRODUCTO
-  // =========================
-  const seleccionarProducto = (prod) => {
-    setSeleccionado(prod);                       // guardamos el producto seleccionado
-    setNuevoNombre(prod.nombre || '');           // precargamos nombre
-    setNuevaDescripcion(prod.descripcion || ''); // precargamos descripción
-    setMensaje(null);
-    setError(null);
-  };
+  // ─── Exportar a PDF ───────────────────────────────────────────────────────
+  const exportarPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
 
-  // =========================
-  // GUARDAR CAMBIOS (UPDATE)
-  // =========================
-  const handleGuardar = async () => {
-    if (!seleccionado) return;
+    // Título del reporte
+    const hoy = new Date().toLocaleDateString('es-AR');
+    doc.setFontSize(14);
+    doc.text('Reporte de Vencimientos - EpicFarma', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Fecha: ${hoy}  |  Total: ${lotesFiltrados.length} lotes`, 14, 22);
 
-    // Validación simple
-    if (!nuevoNombre.trim()) {
-      setError('El nombre no puede estar vacío.');
-      return;
-    }
-
-    setLoading(true);
-    setMensaje(null);
-    setError(null);
-
-    try {
-      // Llamamos PUT /productos/by-codigo/:codigoBarra
-      const actualizado = await updateProductoNombre(
-        seleccionado.codigo_barra,
-        nuevoNombre.trim(),
-        nuevaDescripcion.trim()
-      );
-
-      // Actualizamos el seleccionado
-      setSeleccionado(actualizado);
-
-      // Mensaje OK
-      setMensaje('Producto actualizado correctamente.');
-
-      // Actualizamos sugerencias (si estaban visibles)
-      setSugerencias((prev) =>
-        prev.map((p) =>
-          p.codigo_barra === actualizado.codigo_barra ? actualizado : p
-        )
-      );
-
-      // Actualizamos la tabla general
-      setProductos((prev) =>
-        prev.map((p) =>
-          p.codigo_barra === actualizado.codigo_barra ? actualizado : p
-        )
-      );
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // =========================
-  // ORDENAR TABLA
-  // =========================
-  const toggleSort = (key) => {
-    // Si clickean la misma columna, invertimos asc/desc
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      // Si es otra columna, cambiamos key y volvemos asc
-      setSortKey(key);
-      setSortDir('asc');
-    }
-
-    // volvemos a la página 1 para evitar “página vacía”
-    setPage(1);
-  };
-
-  // Productos ordenados (memo para no recalcular todo siempre)
-  const productosOrdenados = useMemo(() => {
-    const arr = [...productos];
-
-    arr.sort((a, b) => {
-      const va = (a?.[sortKey] ?? '').toString().toLowerCase();
-      const vb = (b?.[sortKey] ?? '').toString().toLowerCase();
-
-      if (va < vb) return sortDir === 'asc' ? -1 : 1;
-      if (va > vb) return sortDir === 'asc' ? 1 : -1;
-      return 0;
+    // Tabla con los datos
+    autoTable(doc, {
+      startY: 28,
+      head: [['Código', 'Producto', 'Cantidad', 'Vencimiento', 'Lote', 'Estado']],
+      body: lotesFiltrados.map((l) => [
+        l.codigo_barra,
+        l.producto_nombre,
+        l.cantidad,
+        formatFecha(l.fecha_vencimiento),
+        l.lote || '-',
+        diasFaltan(l.fecha_vencimiento) >= 0
+          ? `Faltan ${diasFaltan(l.fecha_vencimiento)} días`
+          : `Vencido hace ${Math.abs(diasFaltan(l.fecha_vencimiento))} días`
+      ]),
+      // Coloreamos las filas según estado
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const lote = lotesFiltrados[data.row.index];
+          const dias = diasFaltan(lote.fecha_vencimiento);
+          if (dias < 0) {
+            data.cell.styles.fillColor = [254, 202, 202]; // rojo suave
+          } else if (dias <= 15) {
+            data.cell.styles.fillColor = [254, 215, 170]; // naranja suave
+          } else if (dias <= 30) {
+            data.cell.styles.fillColor = [254, 249, 195]; // amarillo suave
+          } else {
+            data.cell.styles.fillColor = [220, 252, 231]; // verde suave
+          }
+        }
+      },
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [30, 64, 175] }, // azul oscuro
     });
 
-    return arr;
-  }, [productos, sortKey, sortDir]);
+    const hoyStr = new Date().toISOString().split('T')[0];
+    doc.save(`vencimientos_${hoyStr}.pdf`);
+  };
 
-  // Paginación: total de páginas
-  const totalPages = Math.max(1, Math.ceil(productosOrdenados.length / pageSize));
+  // ─── Etiqueta del filtro activo para mostrar en el título ─────────────────
+  const etiquetaFiltro = {
+    todos: 'Todos los lotes activos',
+    proximos15: 'Próximos a vencer (15 días)',
+    proximos30: 'Próximos a vencer (30 días)',
+    proximos60: 'Próximos a vencer (60 días)',
+    vencidos: 'Lotes vencidos'
+  }[filtroEstado];
 
-  // Productos que se ven en la página actual
-  const productosPagina = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return productosOrdenados.slice(start, start + pageSize);
-  }, [productosOrdenados, page]);
-
-  // =========================
-  // RENDER
-  // =========================
   return (
-    <div className="page page-ingreso">
-      <div className="page-ingreso-inner card">
-        <h2>Admin de productos</h2>
+    <div className="page">
+      <div className="card" style={{ width: '100%', maxWidth: '1100px' }}>
+        <h2>Reportes y Exportación</h2>
 
-        {/* Errores y mensajes */}
         {error && <div className="alert-error">{error}</div>}
-        {mensaje && <div className="alert-info">{mensaje}</div>}
+        {loading && <div className="alert-info">Cargando lotes...</div>}
 
-        {/* =========================
-            BUSCADOR + SUGERENCIAS
-        ========================== */}
-        <div className="admin-search">
-          <label htmlFor="admin-query">Buscar producto por código o nombre</label>
+        {/* ── Filtros ── */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '16px' }}>
 
-          <input
-            id="admin-query"
-            type="text"
-            placeholder="Escaneá el código o escribí el nombre..."
-            value={query}
-            onChange={handleChangeQuery}
-            onKeyDown={handleKeyDown}
-          />
+          {/* Filtro por estado */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <small>Estado</small>
+            <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+              <option value="todos">Todos los activos</option>
+              <option value="proximos15">Próximos a vencer (15 días)</option>
+              <option value="proximos30">Próximos a vencer (30 días)</option>
+              <option value="proximos60">Próximos a vencer (60 días)</option>
+              <option value="vencidos">Vencidos</option>
+            </select>
+          </div>
 
-          <small>
-            Si escaneás con lector, el código entra acá y al presionar Enter se buscan coincidencias.
-          </small>
+          {/* Filtro por fecha desde */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <small>Vencimiento desde</small>
+            <input
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
+            />
+          </div>
 
-          {/* Lista de sugerencias */}
-          {sugerencias.length > 0 && (
-            <ul className="admin-suggestions">
-              {sugerencias.map((prod) => (
-                <li
-                  key={prod.id}
-                  onClick={() => seleccionarProducto(prod)}
-                  className={
-                    seleccionado && seleccionado.codigo_barra === prod.codigo_barra
-                      ? 'admin-suggestion active'
-                      : 'admin-suggestion'
-                  }
-                >
-                  <div className="admin-suggestion-main">
-                    <span className="admin-suggestion-name">{prod.nombre}</span>
-                    <span className="admin-suggestion-code">{prod.codigo_barra}</span>
-                  </div>
+          {/* Filtro por fecha hasta */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <small>Vencimiento hasta</small>
+            <input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+            />
+          </div>
 
-                  {prod.descripcion && (
-                    <small className="admin-suggestion-desc">{prod.descripcion}</small>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Buscador por nombre */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '180px' }}>
+            <small>Buscar producto</small>
+            <input
+              type="text"
+              placeholder="Nombre o código..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+
+          {/* Botón limpiar filtros */}
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroEstado('todos');
+              setFechaDesde('');
+              setFechaHasta('');
+              setBusqueda('');
+            }}
+          >
+            🗑️ Limpiar filtros
+          </button>
         </div>
 
-        {/* =========================
-            FORMULARIO DE EDICIÓN
-        ========================== */}
-        {seleccionado && (
-          <div className="admin-edit card" style={{ marginTop: '16px' }}>
-            <h3>Editar producto seleccionado</h3>
-
-            <p>
-              <strong>Código:</strong> {seleccionado.codigo_barra}
-            </p>
-
-            <div className="admin-field">
-              <label>Nombre</label>
-              <input
-                type="text"
-                value={nuevoNombre}
-                onChange={(e) => setNuevoNombre(e.target.value)}
-              />
-            </div>
-
-            <div className="admin-field">
-              <label>Descripción (opcional)</label>
-              <input
-                type="text"
-                value={nuevaDescripcion}
-                onChange={(e) => setNuevaDescripcion(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-              <button type="button" onClick={() => setSeleccionado(null)}>
-                Cancelar
-              </button>
-
-              <button className="btn-primary" onClick={handleGuardar} disabled={loading}>
-                {loading ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-            </div>
+        {/* ── Resumen y botones de exportación ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <p style={{ margin: 0, fontWeight: 600 }}>{etiquetaFiltro}</p>
+            <small style={{ color: '#9ca3af' }}>{lotesFiltrados.length} lotes encontrados</small>
           </div>
-        )}
 
-        {/* =========================
-            TABLA GENERAL DE PRODUCTOS
-        ========================== */}
-        <div className="card" style={{ marginTop: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-            <h3 style={{ margin: 0 }}>Todos los productos</h3>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {/* Exportar Excel */}
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={exportarExcel}
+              disabled={lotesFiltrados.length === 0}
+            >
+              📊 Exportar Excel
+            </button>
 
-            <button type="button" onClick={refrescarTabla} disabled={loadingTabla}>
-              {loadingTabla ? 'Cargando...' : 'Refrescar'}
+            {/* Exportar PDF */}
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={exportarPDF}
+              disabled={lotesFiltrados.length === 0}
+            >
+              📄 Exportar PDF
             </button>
           </div>
+        </div>
 
-          <p style={{ color: '#9ca3af', marginTop: '8px' }}>
-            Total: <strong>{productos.length}</strong>
-          </p>
-
-          <table className="table-venc" style={{ marginTop: '10px' }}>
+        {/* ── Vista previa de la tabla ── */}
+        {lotesFiltrados.length === 0 ? (
+          <p style={{ color: '#9ca3af' }}>No hay lotes que coincidan con los filtros aplicados.</p>
+        ) : (
+          <table className="table-venc">
             <thead>
               <tr>
-                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('codigo_barra')}>
-                  Código {sortKey === 'codigo_barra' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-
-                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('nombre')}>
-                  Nombre {sortKey === 'nombre' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-
-                <th>Descripción</th>
-
-                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>
-                  ID {sortKey === 'id' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                </th>
-
-                <th>Acción</th>
+                <th>Código</th>
+                <th>Producto</th>
+                <th>Cantidad</th>
+                <th>Vencimiento</th>
+                <th>Lote</th>
+                <th>Estado</th>
               </tr>
             </thead>
-
             <tbody>
-              {productosPagina.length === 0 ? (
-                <tr>
-                  <td colSpan="5" style={{ padding: '12px', color: '#9ca3af' }}>
-                    No hay productos para mostrar.
-                  </td>
-                </tr>
-              ) : (
-                productosPagina.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.codigo_barra}</td>
-                    <td>{p.nombre}</td>
-                    <td>{p.descripcion || '—'}</td>
-                    <td>{p.id}</td>
+              {lotesFiltrados.map((lote) => {
+                const dias = diasFaltan(lote.fecha_vencimiento);
+                let rowClass = 'row-green';
+                if (dias <= 30 && dias > 15) rowClass = 'row-yellow';
+                if (dias <= 15) rowClass = 'row-red';
+                return (
+                  <tr key={lote.id} className={rowClass}>
+                    <td>{lote.codigo_barra}</td>
+                    <td>{lote.producto_nombre}</td>
+                    <td className="text-right">{lote.cantidad}</td>
+                    <td>{formatFecha(lote.fecha_vencimiento)}</td>
+                    <td>{lote.lote || '-'}</td>
                     <td>
-                      <button type="button" onClick={() => seleccionarProducto(p)}>
-                        Editar
-                      </button>
+                      {dias >= 0
+                        ? `Faltan ${dias} días`
+                        : `Vencido hace ${Math.abs(dias)} días`}
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })}
             </tbody>
           </table>
-
-          {/* Paginación */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-            <small style={{ color: '#9ca3af' }}>
-              Página {page} de {totalPages}
-            </small>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                ← Anterior
-              </button>
-
-              <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Siguiente →
-              </button>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -3,8 +3,6 @@ const path = require('path');
 const http = require('http');
 
 function startBackend() {
-  // En producción el backend está en resources/ (fuera del asar)
-  // En desarrollo está en ../backend/
   const backendPath = app.isPackaged
     ? path.join(process.resourcesPath, 'backend', 'src', 'server.js')
     : path.join(__dirname, '..', 'backend', 'src', 'server.js');
@@ -12,9 +10,6 @@ function startBackend() {
   const dotenvPath = app.isPackaged
     ? path.join(process.resourcesPath, 'backend', '.env')
     : path.join(__dirname, '..', 'backend', '.env');
-
-  console.log('Backend path:', backendPath);
-  console.log('Dotenv path:', dotenvPath);
 
   require('dotenv').config({ path: dotenvPath });
   require(backendPath);
@@ -52,17 +47,9 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
 
-  if (app.isPackaged) {
-    // En producción los archivos del frontend están dentro del asar
-    const indexPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
-    const fileUrl = 'file:///' + indexPath.replace(/\\/g, '/');
-    console.log('Cargando frontend:', fileUrl);
-    win.loadURL(fileUrl);
-  } else {
-    const indexPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
-    const fileUrl = 'file:///' + indexPath.replace(/\\/g, '/');
-    win.loadURL(fileUrl);
-  }
+  const indexPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
+  const fileUrl = 'file:///' + indexPath.replace(/\\/g, '/');
+  win.loadURL(fileUrl);
 }
 
 app.whenReady().then(async () => {
