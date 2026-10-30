@@ -217,12 +217,13 @@ function Revisar({ analisis, archivo, onCancelar, onListo }) {
   // Mismo producto con dos vencimientos: se divide la línea
   const dividir = (l) => {
     const total = Number(l.cantidad) || 0;
+    if (!Number.isInteger(total) || total < 2) return;
     const mitad = Math.floor(total / 2);
     setLineas((ls) => {
       const i = ls.findIndex((x) => x.key === l.key);
-      const copia = { ...l, key: nuevaClave(), cantidad: total - mitad || '', vencimiento: null, lote: '' };
+      const copia = { ...l, key: nuevaClave(), cantidad: total - mitad, vencimiento: null, lote: '' };
       const out = [...ls];
-      out[i] = { ...l, cantidad: mitad || l.cantidad };
+      out[i] = { ...l, cantidad: mitad };
       out.splice(i + 1, 0, copia);
       return out;
     });
@@ -374,7 +375,7 @@ function Revisar({ analisis, archivo, onCancelar, onListo }) {
                       />
                       {l.vencimiento && <Semaforo fecha={l.vencimiento} />}
                     </td>
-                    <td><button type="button" className="btn-mini" title="Mismo producto con otro vencimiento" onClick={() => dividir(l)}>➗ Dividir</button></td>
+                    <td><button type="button" className="btn-mini" title="Mismo producto con otro vencimiento" disabled={!(Number(l.cantidad) >= 2)} onClick={() => dividir(l)}>➗ Dividir</button></td>
                   </tr>
                 );
               })}

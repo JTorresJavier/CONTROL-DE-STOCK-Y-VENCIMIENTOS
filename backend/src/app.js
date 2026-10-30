@@ -8,11 +8,14 @@ const path = require('path');
 const productosRoutes = require('./routes/productos.routes');
 const lotesRoutes = require('./routes/lotes.routes');
 const stockRoutes = require('./routes/stock.routes');
+const { protegerRed, origenPermitido } = require('./utils/acceso');
+const { leerConfig } = require('./controllers/sistema.controller');
 
 const app = express();
 
 app.disable('x-powered-by');
-app.use(cors());
+app.use(cors({ origin: origenPermitido }));
+app.use('/api', protegerRed(leerConfig));
 // La restauración de copias recibe el archivo crudo; el resto, JSON
 app.use((req, res, next) => (req.path === '/api/backup/restaurar' ? next() : express.json({ limit: '25mb' })(req, res, next)));
 

@@ -127,7 +127,8 @@ function prepararImagen(origen) {
   for (let p = 0, i = 0; p < grises.length; p++, i += 4) grises[p] = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0;
   const umbral = umbralOtsu(grises);
   const negro = new Uint8Array(W * H);
-  for (let p = 0; p < negro.length; p++) negro[p] = grises[p] < umbral ? 1 : 0;
+  // "<=": en imágenes ya en blanco y negro puro, Otsu da umbral 0 y el negro (0) tiene que quedar negro
+  for (let p = 0; p < negro.length; p++) negro[p] = grises[p] <= umbral ? 1 : 0;
 
   // Líneas horizontales: tramos negros muy largos en una fila
   const minH = Math.max(60, W * 0.08);

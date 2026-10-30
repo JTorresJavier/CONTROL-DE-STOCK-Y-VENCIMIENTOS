@@ -14,21 +14,40 @@ const CONFIG_DEFECTO = {
   alertaRoja: 30, // días: vence en 30 días o menos
   alertaNaranja: 60,
   alertaAmarilla: 90,
+  accesoRed: false, // uso desde celulares/otras PCs de la red (con PIN)
+  pinRed: '',
 };
+
+const nuevoPin = () => String(require('crypto').randomInt(100000, 1000000));
 
 function leerConfig() {
   const out = { ...CONFIG_DEFECTO };
   for (const { clave, valor } of db.prepare('SELECT clave, valor FROM config').all()) {
-    if (clave in CONFIG_DEFECTO) out[clave] = typeof CONFIG_DEFECTO[clave] === 'number' ? Number(valor) : valor;
+    if (!(clave in CONFIG_DEFECTO)) continue;
+    const tipo = typeof CONFIG_DEFECTO[clave];
+    out[clave] = tipo === 'number' ? Number(valor) : tipo === 'boolean' ? valor === 'true' : valor;
+  }
+  if (!out.pinRed) {
+    out.pinRed = nuevoPin();
+    db.prepare('INSERT INTO config (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor').run('pinRed', out.pinRed);
   }
   return out;
 }
 
-const getConfig = (req, res) => res.json(leerConfig());
+// El PIN solo se muestra en la propia PC
+const configPublica = (req) => {
+  const cfg = leerConfig();
+  if (!req.esLocal) delete cfg.pinRed;
+  return cfg;
+};
+
+const getConfig = (req, res) => res.json(configPublica(req));
 
 const putConfig = (req, res) => {
   const b = req.body || {};
   const nuevo = { ...leerConfig() };
+  if (b.accesoRed !== undefined) nuevo.accesoRed = b.accesoRed === true;
+  if (b.regenerarPin) nuevo.pinRed = nuevoPin();
   if (b.nombreNegocio !== undefined) nuevo.nombreNegocio = texto(b.nombreNegocio, { max: 60 }) || CONFIG_DEFECTO.nombreNegocio;
   for (const k of ['alertaRoja', 'alertaNaranja', 'alertaAmarilla']) {
     if (b[k] !== undefined) nuevo[k] = entero(b[k], { min: 1, max: 3650, campo: 'días de alerta' });
@@ -38,7 +57,7 @@ const putConfig = (req, res) => {
   }
   const guardar = db.prepare('INSERT INTO config (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor');
   db.transaction(() => { for (const [k, v] of Object.entries(nuevo)) guardar.run(k, String(v)); })();
-  res.json(nuevo);
+  res.json(configPublica(req));
 };
 
 // ─── Resumen para la pantalla de inicio ───────────────────────────────────────
@@ -107,11 +126,14 @@ const carpetaRespaldos = () => {
   return dir;
 };
 
-const nombreRespaldo = (prefijo) => `${prefijo}-${ahoraLocal().replace(/[: ]/g, '-').slice(0, 16)}.db`;
+const nombreRespaldo = (prefijo) => `${prefijo}-${ahoraLocal().replace(/[: ]/g, '-')}.db`;
 
 async function respaldoAutomatico(prefijo = 'auto') {
   const dir = carpetaRespaldos();
-  const destino = path.join(dir, nombreRespaldo(prefijo));
+  // Nunca se pisa un respaldo existente (dos respaldos en el mismo segundo llevan sufijo)
+  const base = path.join(dir, nombreRespaldo(prefijo)).slice(0, -3);
+  let destino = `${base}.db`;
+  for (let n = 2; fs.existsSync(destino); n++) destino = `${base}_${n}.db`;
   await db.backup(destino);
   // Conservamos los 20 más nuevos
   const archivos = fs.readdirSync(dir).filter((f) => f.endsWith('.db')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);

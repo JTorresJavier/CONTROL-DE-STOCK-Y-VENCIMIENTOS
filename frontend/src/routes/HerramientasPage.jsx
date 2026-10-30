@@ -95,11 +95,27 @@ export function HerramientasPage() {
 
             <div className="card">
               <h3>📱 Usar desde el celular</h3>
-              <p className="muted">Con el celular conectado al mismo Wi-Fi que esta PC, abrí en el navegador:</p>
-              {info?.ips?.length ? (
-                <ul className="lista-simple">{info.ips.map((ip) => <li key={ip}><code>http://{ip}:{info.puerto}</code></li>)}</ul>
-              ) : <p className="muted">No se detectó una red local.</p>}
-              <small className="muted">Desde el celular podés escanear con la cámara en Ingreso y Salida.</small>
+              <label className="check">
+                <input type="checkbox" checked={!!config.accesoRed} disabled={ocupado} onChange={(e) => {
+                  const activar = e.target.checked;
+                  ejecutar(async () => { await guardarConfig({ accesoRed: activar }); await recargar(); setMsg({ ok: activar ? 'Acceso desde la red activado' : 'Acceso desde la red desactivado' }); });
+                }} />
+                Permitir el uso desde otros equipos de la red (Wi-Fi del local)
+              </label>
+              {config.accesoRed ? (
+                <>
+                  <p className="muted">Con el celular en el mismo Wi-Fi que esta PC, abrí en el navegador:</p>
+                  {info?.ips?.length ? (
+                    <ul className="lista-simple">{info.ips.map((ip) => <li key={ip}><code>http://{ip}:{info.puerto}</code></li>)}</ul>
+                  ) : <p className="muted">No se detectó una red local.</p>}
+                  <p>PIN para entrar: <strong className="pin">{config.pinRed}</strong>{' '}
+                    <button type="button" className="btn-mini" disabled={ocupado} onClick={() => ejecutar(async () => { await guardarConfig({ regenerarPin: true }); await recargar(); setMsg({ ok: 'PIN cambiado: los celulares van a tener que ingresarlo de nuevo' }); })}>Cambiar PIN</button>
+                  </p>
+                  <small className="muted">Desde otro equipo no se pueden hacer copias de seguridad ni cambiar la configuración. La primera vez Windows puede pedir permiso de red: aceptá solo para redes privadas.</small>
+                </>
+              ) : (
+                <small className="muted">Desactivado: solo se puede usar desde esta PC.</small>
+              )}
             </div>
           </div>
         </div>

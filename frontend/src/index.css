@@ -897,6 +897,7 @@ button.chip.activa { border-color: var(--primary); background: rgba(59, 130, 246
 
 .producto-elegido { margin-top: 12px; text-align: left; }
 .lista-respaldos li { align-items: center; }
+.pin { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 3px; color: #bfdbfe; }
 
 /* ========= RESPONSIVE ========= */
 

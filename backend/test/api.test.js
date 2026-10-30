@@ -183,6 +183,50 @@ test('no se puede deshacer una importación con stock ya usado', async () => {
   assert.ok(codigo);
 });
 
+test('código interno de otro proveedor no asigna un producto distinto', async () => {
+  const amox = (await api('POST', '/productos', { nombre: 'Amoxicilina 875 mg x 14', codigoBarra: ean13('779988880001'), codigoInterno: 'X9999' })).data;
+  const an = await api('POST', '/importaciones/analizar', {
+    texto: 'CODIGO EAN DESCRIPCION CANT\nX9999  ' + ean13('779988880002') + '  IBUPROFENO 600 MG X 10  3',
+  });
+  assert.notEqual(an.data.lineas[0].estado, 'existe');
+  const an2 = await api('POST', '/importaciones/analizar', { texto: 'CODIGO DESCRIPCION CANT\nX9999  AMOXICILINA 875 MG X 14  3' });
+  assert.equal(an2.data.lineas[0].producto.id, amox.id);
+  assert.equal(an2.data.lineas[0].estado, 'existe');
+});
+
+test('no se puede deshacer si hubo movimientos aunque la cantidad vuelva a ser la misma', async () => {
+  const conf = await api('POST', '/importaciones', {
+    numero: 'X-2', lineas: [{ nuevo: { nombre: 'Producto mov' }, cantidad: 5, vencimiento: '12/2031' }],
+  });
+  const imp = (await api('GET', `/importaciones/${conf.data.importacionId}`)).data;
+  const loteId = imp.lotes[0].id;
+  await api('PUT', `/lotes/${loteId}`, { cantidad: 4 });
+  await api('PUT', `/lotes/${loteId}`, { cantidad: 5 });
+  assert.equal((await api('POST', `/importaciones/${conf.data.importacionId}/deshacer`)).status, 409);
+
+  const conf2 = await api('POST', '/importaciones', { numero: 'X-3', lineas: [{ nuevo: { nombre: 'Prod borrado' }, cantidad: 2, vencimiento: '12/2031' }, { nuevo: { nombre: 'Prod sigue' }, cantidad: 2, vencimiento: '12/2031' }] });
+  const imp2 = (await api('GET', `/importaciones/${conf2.data.importacionId}`)).data;
+  await api('DELETE', `/lotes/${imp2.lotes[0].id}`);
+  assert.equal((await api('POST', `/importaciones/${conf2.data.importacionId}/deshacer`)).status, 409);
+});
+
+test('acceso desde la red: bloqueado por defecto, con PIN si se activa, sin respaldos remotos', () => {
+  const { protegerRed } = require('../src/utils/acceso');
+  const probar = (cfg, { ip = '192.168.0.20', pin, ruta = '/productos', metodo = 'GET' } = {}) => {
+    let estado = 200;
+    const req = { socket: { remoteAddress: ip }, path: ruta, method: metodo, get: () => pin };
+    const res = { status: (s) => { estado = s; return { json: () => {} }; } };
+    protegerRed(() => cfg)(req, res, () => {});
+    return estado;
+  };
+  assert.equal(probar({ accesoRed: false, pinRed: '123456' }, { ip: '127.0.0.1' }), 200);
+  assert.equal(probar({ accesoRed: false, pinRed: '123456' }), 403);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }), 401);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456' }), 200);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/backup' }), 403);
+  assert.equal(probar({ accesoRed: true, pinRed: '123456' }, { pin: '123456', ruta: '/config', metodo: 'PUT' }), 403);
+});
+
 test('configuración de alertas y respaldo/restauración', async () => {
   assert.equal((await api('PUT', '/config', { alertaRoja: 90, alertaNaranja: 60 })).status, 400);
   const cfg = await api('PUT', '/config', { alertaRoja: 15, alertaNaranja: 45, alertaAmarilla: 120 });
@@ -204,6 +248,12 @@ test('configuración de alertas y respaldo/restauración', async () => {
   assert.equal(rest.status, 200);
   assert.equal((await api('GET', '/productos')).data.length, antes);
   assert.ok((await api('GET', '/backup/automaticos')).data.lista.some((b) => b.nombre.startsWith('antes-de-restaurar')));
+
+  // Dos respaldos seguidos no se pisan
+  const r1 = await api('POST', '/backup/automaticos');
+  const r2 = await api('POST', '/backup/automaticos');
+  assert.notEqual(r1.data.nombre, r2.data.nombre);
+  assert.equal((await api('GET', '/config')).data.pinRed.length, 6); // desde la PC se ve el PIN
 });
 
 test('errores sin detalles internos', async () => {

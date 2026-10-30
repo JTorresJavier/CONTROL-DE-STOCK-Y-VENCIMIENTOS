@@ -68,14 +68,20 @@ function emparejarLinea(indice, linea) {
     const p = indice.porBarra.get(sinCeros(linea.ean));
     if (p) return { estado: 'existe', producto: resumen(p), confianza: 1, motivo: 'Código de barras' };
   }
-  // 2) Código interno (o un código que coincide con un código de barras cargado)
+  const norm = normalizar(linea.descripcion);
+
+  // 2) Código interno (o un código que coincide con un código de barras cargado).
+  // Cada proveedor usa sus propios códigos: si el nombre no se parece o el EAN dice otra cosa, solo se sugiere.
   if (linea.codigo) {
     const c = String(linea.codigo).trim().toUpperCase();
     const p = indice.porInterno.get(c) || indice.porBarra.get(sinCeros(c));
-    if (p) return { estado: 'existe', producto: resumen(p), confianza: 0.98, motivo: 'Código interno' };
+    const eanContradice = p && linea.ean && /^\d{8,14}$/.test(p.codigo_barra) && sinCeros(p.codigo_barra) !== sinCeros(linea.ean);
+    if (p && !eanContradice) {
+      const parecido = norm ? similitud(norm, p.norm) : 1;
+      if (parecido >= 0.5) return { estado: 'existe', producto: resumen(p), confianza: 0.98, motivo: 'Código interno' };
+      return { estado: 'sugerido', producto: resumen(p), confianza: 0.6, motivo: 'Mismo código interno, pero el nombre es distinto', alternativas: [] };
+    }
   }
-
-  const norm = normalizar(linea.descripcion);
   if (!norm) return { estado: 'nuevo', producto: null, confianza: 0, motivo: 'Sin descripción' };
 
   // 3) Ya se importó antes con este mismo nombre

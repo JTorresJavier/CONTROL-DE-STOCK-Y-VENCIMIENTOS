@@ -169,7 +169,9 @@ const confirmar = (req, res) => {
 const listar = (req, res) => {
   res.json(db.prepare(`
     SELECT i.*,
-      (SELECT COUNT(*) FROM lotes l WHERE l.importacion_id = i.id AND l.cantidad <> l.cantidad_inicial) AS lotes_modificados
+      (SELECT COUNT(*) FROM lotes l WHERE l.importacion_id = i.id AND l.cantidad <> l.cantidad_inicial)
+        + (SELECT COUNT(*) FROM movimientos_stock m WHERE m.lote_id IN (SELECT id FROM lotes WHERE importacion_id = i.id) AND NOT (m.tipo = 'INGRESO' AND m.importacion_id = i.id))
+        + (i.total_lineas - (SELECT COUNT(*) FROM lotes l WHERE l.importacion_id = i.id)) AS lotes_modificados
     FROM importaciones i
     ORDER BY i.id DESC
     LIMIT 500
@@ -206,9 +208,17 @@ const deshacer = (req, res) => {
   const lotes = db.prepare(`
     SELECT l.*, p.nombre AS producto_nombre FROM lotes l JOIN productos p ON p.id = l.producto_id WHERE l.importacion_id = ?
   `).all(id);
-  const tocados = lotes.filter((l) => l.cantidad !== l.cantidad_inicial);
+  // Solo se deshace si el stock importado está intacto: ningún movimiento posterior y ningún lote borrado
+  const conMovimientos = db.prepare(`
+    SELECT DISTINCT lote_id FROM movimientos_stock
+    WHERE lote_id IN (SELECT id FROM lotes WHERE importacion_id = ?) AND NOT (tipo = 'INGRESO' AND importacion_id = ?)
+  `).all(id, id).map((r) => r.lote_id);
+  const tocados = lotes.filter((l) => l.cantidad !== l.cantidad_inicial || conMovimientos.includes(l.id));
   if (tocados.length) {
     throw error(409, `No se puede deshacer: ${tocados.length} lote(s) ya tuvieron movimientos (${tocados.slice(0, 3).map((l) => l.producto_nombre).join(', ')}${tocados.length > 3 ? '…' : ''}). Corregilos desde Vencimientos.`);
+  }
+  if (lotes.length !== imp.total_lineas) {
+    throw error(409, `No se puede deshacer: ${imp.total_lineas - lotes.length} lote(s) de esta importación ya fueron eliminados. Corregí el stock desde Vencimientos.`);
   }
 
   const resultado = db.transaction(() => {

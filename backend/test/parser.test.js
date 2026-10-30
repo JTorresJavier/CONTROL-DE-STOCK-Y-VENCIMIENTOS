@@ -126,6 +126,19 @@ Recibí conforme:`;
   assert.equal(r.lineas.filter((l) => !l.vencimiento).length, 1); // solo las gasas
 });
 
+test('no se pierden presentaciones (x 30), dosis decimales (0,5 mg) ni se redondean cantidades', () => {
+  const a = parsearLinea('IBUPROFENO 400 MG X 30  2  Vto 12/27');
+  const b = parsearLinea('IBUPROFENO 400 MG X 60  2  Vto 12/27');
+  assert.equal(a.descripcion, 'IBUPROFENO 400 MG X 30');
+  assert.equal(b.descripcion, 'IBUPROFENO 400 MG X 60');
+  const c = parsearLinea('CLONAZEPAM 0,5 mg x 30  2  Vto 12/27');
+  assert.equal(c.descripcion, 'CLONAZEPAM 0,5 mg x 30');
+  assert.equal(c.cantidad, 2);
+  assert.equal(c.precioUnitario, null);
+  const f = parsearFilas([['Descripcion', 'Cantidad', 'Vto'], ['Ibuprofeno', 1.5, '12/27']]);
+  assert.equal(f.lineas[0].cantidad, null);
+});
+
 test('nombres parecidos se reconocen y dosis distintas no', () => {
   const a = normalizar('Ibuprofeno 600 mg x 10 comprimidos');
   assert.ok(similitud(a, normalizar('IBUPROF. 600MG X10 COMPRIMIDOS')) >= 0.82);

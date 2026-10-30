@@ -112,7 +112,9 @@ function parsearLinea(original, opciones = {}) {
 
   // Precios: números con decimales (1.234,56 / 1234.56 / 12,50)
   const decimales = [];
-  s = s.replace(/(?<![\w.,])\$?\s?(\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d+[.,]\d{1,2})(?![\w.,])/g, (txt, num) => {
+  s = s.replace(/(?<![\w.,])\$?\s?(\d{1,3}(?:[.,]\d{3})+[.,]\d{2}|\d+[.,]\d{1,2})(?![\w.,])/g, (txt, num, pos, todo) => {
+    // "0,5 mg" o "x 2,5 ml" es una dosis o presentación, no un precio
+    if (RE_UNIDAD_DESPUES.test(todo.slice(pos + txt.length)) || /x\s*$/i.test(todo.slice(0, pos))) return txt;
     const n = parseNumero(num);
     if (n !== null) { decimales.push(n); return ' # '; }
     return txt;
@@ -201,7 +203,7 @@ function parsearLinea(original, opciones = {}) {
   desc = desc
     .replace(/#/g, ' ')
     .replace(/\b(vto|venc(imiento)?|vence|lote|cant(idad)?|c\/u|p\.?\s?unit|precio)\b\.?:?/gi, ' ')
-    .replace(/(?<![\w])\d{1,6}(?![\w.,%])\s*$/g, ' ') // número suelto al final (columnas sin usar)
+    .replace(/(?<![\w.,]|x\s*)\d{1,6}(?![\w.,%])\s*$/gi, ' ') // número suelto al final (columnas sin usar), pero no "x 30"
     .replace(/^\s*\d{1,6}(?![\w.,%])\s+/g, ' ') // número suelto al principio
     .replace(/[|$*_=]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -412,7 +414,8 @@ function parsearFilas(filas) {
       ean,
       codigo,
       descripcion,
-      cantidad: Number.isFinite(cantidad) && cantidad > 0 ? Math.round(cantidad) : null,
+      // Cantidades con decimales (1,5) no se redondean: quedan vacías para que se completen a mano
+      cantidad: Number.isInteger(cantidad) && cantidad > 0 ? cantidad : null,
       lote: textoCelda(celda('lote')).toUpperCase() || null,
       vencimiento,
       precioUnitario: Number.isFinite(precioUnitario) ? precioUnitario : null,
