@@ -1,22 +1,18 @@
 // src/main.jsx
-
-// Importamos React y ReactDOM para montar la app
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// Importamos el router para manejar rutas
+// HashRouter: funciona igual servida por el backend, en Electron o abierta como archivo
 import { HashRouter } from 'react-router-dom';
-// Importamos el componente principal de la app
 import App from './App.jsx';
-// Importamos estilos globales (podés dejar lo que trae Vite o uno propio)
+import { ConfigProvider } from './context/ConfigContext.jsx';
 import './index.css';
 
-// Creamos la raíz de React y renderizamos la app dentro del div con id="root"
 ReactDOM.createRoot(document.getElementById('root')).render(
-  // StrictMode ayuda en desarrollo a detectar problemas
   <React.StrictMode>
-    {/* BrowserRouter envuelve toda la app para habilitar rutas */}
     <HashRouter>
-      <App />
+      <ConfigProvider>
+        <App />
+      </ConfigProvider>
     </HashRouter>
   </React.StrictMode>
 );

@@ -1,216 +1,113 @@
 // src/routes/VencimientosPage.jsx
-import { useEffect, useState, useMemo } from 'react';
+// Todos los lotes con stock: búsqueda, filtro por semáforo, agrupado por fecha de carga o por vencimiento.
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getLotesVencimientos } from '../services/api';
 import { VencimientosTable } from '../components/VencimientosTable';
+import { estadoVencimiento, formatoAR } from '../utils/fechas';
+import { useConfig } from '../context/ConfigContext';
+import { Mensajes, Vacio } from '../components/ui';
 
-/**
- * 1) Función helper: convierte cualquier fecha (ISO con hora o YYYY-MM-DD)
- *    a clave diaria "YYYY-MM-DD".
- *    - Si viene "2025-12-12T10:33:00.000Z" -> "2025-12-12"
- *    - Si ya viene "2025-12-12" -> "2025-12-12"
- */
-function toDia(fecha) {
-  if (!fecha) return 'Sin fecha';
-  // Si viene tipo Date o string, lo transformamos a string primero
-  const s = String(fecha);
-  // Si trae "T", nos quedamos con lo anterior (YYYY-MM-DD)
-  return s.includes('T') ? s.split('T')[0] : s;
-}
+const ESTADOS = [
+  ['', 'Todos'],
+  ['vencido', '⛔ Vencidos'],
+  ['rojo', '🔴 Rojo'],
+  ['naranja', '🟠 Naranja'],
+  ['amarillo', '🟡 Amarillo'],
+  ['verde', '🟢 Lejanos'],
+];
 
-/**
- * 2) Formateo para mostrar en pantalla en formato argentino DD/MM/YYYY
- *    Recibe "YYYY-MM-DD" y devuelve "DD/MM/YYYY"
- */
-function formatFechaAR(yyyyMMdd) {
-  if (!yyyyMMdd || yyyyMMdd === 'Sin fecha') return yyyyMMdd;
-  const [y, m, d] = yyyyMMdd.split('-');
-  return `${d}/${m}/${y}`;
-}
-
-/**
- * 3) Agrupar lotes por fecha_alta (DÍA), sin sumar cantidades.
- *    Esto sirve para ver "todo lo que se cargó ese día".
- *    Devuelve: [ [dia, items[]], [dia, items[]], ... ] ya ordenado por día.
- */
 function agruparPorDiaDeCarga(lotes) {
   const mapa = new Map();
-
   for (const lote of lotes) {
-    // clave de grupo = día de carga
-    const dia = toDia(lote.fecha_alta);
-
-    if (!mapa.has(dia)) {
-      mapa.set(dia, []);
-    }
+    const dia = lote.fecha_alta ? String(lote.fecha_alta).slice(0, 10) : 'Sin fecha';
+    if (!mapa.has(dia)) mapa.set(dia, []);
     mapa.get(dia).push(lote);
   }
-
-  // Convertimos el Map a array de pares y ordenamos por día (más nuevo primero)
-  const grupos = Array.from(mapa.entries()).sort((a, b) => {
-    const diaA = a[0];
-    const diaB = b[0];
-
-    if (diaA === 'Sin fecha') return 1;
-    if (diaB === 'Sin fecha') return -1;
-
-    return new Date(diaB) - new Date(diaA);
-  });
-
-  return grupos;
+  return [...mapa.entries()].sort((a, b) => (a[0] === 'Sin fecha' ? 1 : b[0] === 'Sin fecha' ? -1 : b[0].localeCompare(a[0])));
 }
 
 export function VencimientosPage() {
-  // 4) Estado principal con los lotes que llegan del backend
+  const { config } = useConfig();
+  const [params, setParams] = useSearchParams();
   const [lotes, setLotes] = useState([]);
-
-  // 5) Estado de error para mostrar en UI
+  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [ordenFecha, setOrdenFecha] = useState('asc');
+  const estado = params.get('estado') || '';
+  const vista = params.get('vista') || 'venc';
 
-  // 6) Estado del orden de vencimiento dentro de cada grupo
-  const [ordenFecha, setOrdenFecha] = useState('asc'); // 'asc' o 'desc'
+  const setParam = (k, v) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, v); else next.delete(k);
+    setParams(next, { replace: true });
+  };
 
-  const [vista, setVista] = useState('carga'); // 'carga' o 'vencimiento' // 'carga' = agrupado por fecha_alta (lo de ahora) // 'venc'  = listado global por fecha_vencimiento
-
-  // 7) Cuando se monta el componente, pedimos datos al backend
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setError(null); // limpiamos error anterior
-        const data = await getLotesVencimientos(); // trae lotes desde el backend
-        setLotes(data || []); // guardamos en estado (si viene null, usamos [])
-      } catch (err) {
-        setError(err.message); // si falla, guardamos mensaje
-      }
-    };
-    load();
+  const cargarLotes = useCallback(async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      setLotes((await getLotesVencimientos()) || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  /**
-   * 8) Preparamos los grupos por día.
-   *    - Primero agrupamos por fecha_alta
-   *    - Luego ordenamos cada grupo por fecha_vencimiento según el selector
-   */
-  const gruposPorDia = useMemo(() => {
-    // 8.1 agrupamos por día de carga
-    const grupos = agruparPorDiaDeCarga(lotes);
+  useEffect(() => { cargarLotes(); }, [cargarLotes]);
 
-    // 8.2 ordenamos los items dentro de cada día por vencimiento
-    for (const [, items] of grupos) {
-      items.sort((a, b) => {
-        const fa = new Date(a.fecha_vencimiento);
-        const fb = new Date(b.fecha_vencimiento);
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return lotes
+      .filter((l) => !estado || estadoVencimiento(l.fecha_vencimiento, config).nivel === estado)
+      .filter((l) => !q || l.producto_nombre?.toLowerCase().includes(q) || l.codigo_barra?.toLowerCase().includes(q) || l.lote?.toLowerCase().includes(q))
+      .sort((a, b) => (ordenFecha === 'asc' ? 1 : -1) * a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
+  }, [lotes, busqueda, estado, ordenFecha, config]);
 
-        if (ordenFecha === 'asc') return fa - fb; // más próximos primero
-        return fb - fa; // más lejanos primero
-      });
-    }
+  const grupos = useMemo(() => agruparPorDiaDeCarga(filtrados), [filtrados]);
+  const unidades = filtrados.reduce((a, l) => a + l.cantidad, 0);
 
-    return grupos;
-  }, [lotes, ordenFecha]);
-
-  /**
-   * 9) Contador total de filas (sin agrupar cantidades)
-   *    - suma la cantidad de items en cada grupo
-   */
-  const totalLineas = useMemo(() => {
-    return gruposPorDia.reduce((acc, [, items]) => acc + items.length, 0);
-  }, [gruposPorDia]);
-///////////////////////////////////////////////////////
-  const lotesOrdenadosPorVenc = useMemo(() => {
-  const copia = [...lotes];
-
-  copia.sort((a, b) => {
-    // Si falta fecha_vencimiento, mandamos al final
-    const fa = a?.fecha_vencimiento ? new Date(a.fecha_vencimiento) : new Date(8640000000000000);
-    const fb = b?.fecha_vencimiento ? new Date(b.fecha_vencimiento) : new Date(8640000000000000);
-
-    if (ordenFecha === 'asc') return fa - fb; // próximos primero
-    return fb - fa;
-  });
-
-  return copia;
-}, [lotes, ordenFecha]);
-////////////////////////////////////////////////////////
   return (
     <div className="page">
-      <div className="card">
-        <h2>Vencimientos</h2>
+      <div className="card card-ancha">
+        <h2>📅 Vencimientos</h2>
+        <Mensajes error={error} />
 
-        {/* 10) si hay error lo mostramos */}
-        {error && <div className="alert-error">{error}</div>}
-
-        {/* 11) selector para ordenar por fecha de vencimiento */}
-        <div
-          style={{
-            marginBottom: '10px',
-            display: 'flex',
-            gap: '8px',
-            alignItems: 'center'
-          }}
-        >
-
-          {/* NUEVO: selector de vista */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px', color: '#9ca3af' }}>Vista:</span>
-
-            <select value={vista} onChange={(e) => setVista(e.target.value)}>
-              <option value="carga">Agrupado por fecha de carga</option>
-              <option value="venc">Próximos a vencer (global)</option>
-            </select>
-          </div>
-
-          <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-            Ordenar por fecha:
-          </span>
-
+        <div className="filtros">
+          <input type="search" placeholder="Buscar por nombre, código o lote…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+          <select value={vista} onChange={(e) => setParam('vista', e.target.value)}>
+            <option value="venc">Ordenado por vencimiento</option>
+            <option value="carga">Agrupado por día de carga</option>
+          </select>
           <select value={ordenFecha} onChange={(e) => setOrdenFecha(e.target.value)}>
             <option value="asc">Más próximos primero</option>
             <option value="desc">Más lejanos primero</option>
           </select>
+          <button type="button" onClick={cargarLotes} disabled={loading}>🔄 Actualizar</button>
         </div>
 
-        {/* 12) total de líneas que se muestran */}
-        {vista === 'carga' ? (
-          <p>Total líneas (por día): {totalLineas}</p>
-        ) : (
-          <p>Total líneas: {lotesOrdenadosPorVenc.length}</p>
-        )}
+        <div className="chips-filtro">
+          {ESTADOS.map(([v, txt]) => (
+            <button key={v} type="button" className={`chip ${estado === v ? 'activa' : ''} chip-${v || 'todos'}`} onClick={() => setParam('estado', v)}>{txt}</button>
+          ))}
+        </div>
 
-        {/* 13) Render por grupos: un encabezado por día + tabla para ese día */}
+        <p className="muted">{filtrados.length} lotes · {unidades} unidades{busqueda && ` · filtrado por "${busqueda}"`}{loading && ' · cargando…'}</p>
 
-        
-
-
-        {vista === 'venc' ? (
-          lotesOrdenadosPorVenc.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No hay lotes para mostrar.</p>
-          ) : (
-            <VencimientosTable lotes={lotesOrdenadosPorVenc} />
-          )
-        ) : (
-          gruposPorDia.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No hay lotes para mostrar.</p>
-          ) : (
-            gruposPorDia.map(([dia, items]) => (
-              <div key={dia} style={{ marginTop: '14px' }}>
-                {/* Encabezado del día */}
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '8px'
-                  }}
-                >
-                  <h3 style={{ margin: 0 }}>Cargado el: {formatFechaAR(dia)}</h3>
-                  <small style={{ color: '#9ca3af' }}>{items.length} líneas</small>
-                </div>
-
-                {/* Tabla de ese día */}
-                <VencimientosTable lotes={items} />
+        {filtrados.length === 0 ? <Vacio>No hay lotes para mostrar.</Vacio> : vista === 'carga' ? (
+          grupos.map(([dia, items]) => (
+            <div key={dia} className="grupo">
+              <div className="grupo-titulo">
+                <h3>Cargado el {dia === 'Sin fecha' ? '(sin fecha)' : formatoAR(dia)}</h3>
+                <small className="muted">{items.length} líneas</small>
               </div>
-            ))
-          )
+              <VencimientosTable lotes={items} onRefresh={cargarLotes} busqueda={busqueda} />
+            </div>
+          ))
+        ) : (
+          <VencimientosTable lotes={filtrados} onRefresh={cargarLotes} busqueda={busqueda} />
         )}
       </div>
     </div>

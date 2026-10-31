@@ -1,99 +1,59 @@
 // src/routes/SalidaPage.jsx
+// Salida de stock: escaneás o buscás el producto, ves sus lotes y descontás (sale primero lo que vence antes).
 import { useState } from 'react';
-//import { ScannerInput } from '../components/ScannerInput';
-//import { CameraScanner } from '../components/CameraScanner';
-import { CameraScannerZXing } from "../components/CameraScannerZXing";
-
-import {
-  getProductoByCodigo,
-  getLotesByProducto,
-  registrarSalidaStock
-} from '../services/api';
-//import { ProductNameSearch } from '../components/ProductNameSearch';
+import { CameraScannerZXing } from '../components/CameraScannerZXing';
 import { ProductSearchInput } from '../components/ProductSearchInput';
+import { ManualCodeModal } from '../components/Modals/ManualCodeModal';
+import { getProductoByCodigo, getLotesByProducto, registrarSalidaStock } from '../services/api';
+import { formatoAR } from '../utils/fechas';
+import { Mensajes, Semaforo, Vacio } from '../components/ui';
 
-// Helper para formatear fecha YYYY-MM-DD a DD/MM/YYYY
-function formatFecha(fechaISO) {
-  if (!fechaISO) return '';
-  const d = new Date(fechaISO);
-  if (isNaN(d)) return fechaISO;
-  const dd = d.getDate().toString().padStart(2, '0');
-  const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-  const yy = d.getFullYear();
-  return `${dd}/${mm}/${yy}`;
-}
+const MOTIVOS = ['Venta', 'Reposición a mostrador', 'Devolución al proveedor', 'Uso interno', 'Rotura'];
 
 export function SalidaPage() {
   const [producto, setProducto] = useState(null);
   const [lotes, setLotes] = useState([]);
   const [cantidad, setCantidad] = useState('');
-  const [error, setError] = useState(null);
-  const [okMsg, setOkMsg] = useState(null);
+  const [motivo, setMotivo] = useState(MOTIVOS[0]);
+  const [msg, setMsg] = useState({});
   const [loading, setLoading] = useState(false);
   const [camOpen, setCamOpen] = useState(false);
-
+  const [manualOpen, setManualOpen] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
-  const cargarLotesProducto = async (productoId) => {
-    const data = await getLotesByProducto(productoId);
-    setLotes(data || []);
-  };
+  const cargarLotes = async (id) => setLotes((await getLotesByProducto(id)) || []);
 
   const handleCodeRead = async (codigo) => {
     try {
-      setError(null);
-      setOkMsg(null);
+      setMsg({});
       setLoading(true);
       setProducto(null);
       setLotes([]);
-
       const prod = await getProductoByCodigo(codigo);
       setProducto(prod);
-      await cargarLotesProducto(prod.id);
+      await cargarLotes(prod.id);
     } catch (e) {
-      setError(e.message || 'Error al leer producto');
-      setProducto(null);
-      setLotes([]);
+      setMsg({ error: e.message === 'Producto no encontrado' ? `No hay ningún producto con el código ${codigo}.` : e.message });
     } finally {
       setLoading(false);
     }
   };
 
-  const stockTotal = lotes.reduce(
-    (acc, l) => acc + (Number(l.cantidad) || 0),
-    0
-  );
+  const stockTotal = lotes.reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
 
-  const handleDescontar = async () => {
+  const handleDescontar = async (e) => {
+    e.preventDefault();
+    const n = Number(cantidad);
+    if (!Number.isInteger(n) || n <= 0) { setMsg({ error: 'Cantidad inválida' }); return; }
     try {
-      setError(null);
-      setOkMsg(null);
-
-      if (!producto) {
-        setError('Primero escaneá un producto');
-        return;
-      }
-
-      const n = Number(cantidad);
-      if (!n || n <= 0) {
-        setError('Cantidad inválida');
-        return;
-      }
-
       setLoading(true);
-
-      await registrarSalidaStock({
-        codigoBarra: producto.codigo_barra,
-        cantidad: n,
-        origen: 'DEPOSITO',
-        observacion: 'Salida por reposición'
-      });
-
-      setOkMsg('Stock descontado correctamente');
+      setMsg({});
+      const r = await registrarSalidaStock({ productoId: producto.id, cantidad: n, origen: 'SALIDA', observacion: motivo });
+      setMsg({ ok: `Se descontaron ${n} unidades de ${producto.nombre}. Quedan ${r.restante}.` });
       setCantidad('');
-      await cargarLotesProducto(producto.id);
-    } catch (e) {
-      setError(e.message || 'Error al descontar stock');
+      await cargarLotes(producto.id);
+    } catch (err) {
+      setMsg({ error: err.message || 'Error al descontar stock' });
     } finally {
       setLoading(false);
     }
@@ -102,142 +62,63 @@ export function SalidaPage() {
   return (
     <div className="page page-ingreso">
       <div className="page-ingreso-inner card">
-        <h2>Salida de stock / Reposición</h2>
+        <h2>📤 Salida de stock</h2>
+        <Mensajes {...msg} />
 
-        {error && <div className="alert-error">{error}</div>}
-        {okMsg && <div className="alert-info">{okMsg}</div>}
-        {loading && <div className="alert-info">Procesando...</div>}
-
-        {/* Botón de cámara en celular */}
         {isMobile && (
-          <button
-            className="btn-primary"
-            style={{ width: '100%', marginBottom: '10px' }}
-            onClick={() => setCamOpen(true)}
-          >
-            📷 Escanear con Cámara
-          </button>
+          <button className="btn-primary btn-ancho" onClick={() => setCamOpen(true)}>📷 Escanear con cámara</button>
         )}
-
         {camOpen && (
           <CameraScannerZXing
-            onResult={(codigo) => {
-              // 1) cerramos el modal YA
-              setCamOpen(false);
-
-              // 2) y recién después procesamos el código
-              setTimeout(() => {
-                handleCodeRead(codigo);
-              }, 0);
-            }}
+            onResult={(codigo) => { setCamOpen(false); setTimeout(() => handleCodeRead(codigo), 0); }}
             onClose={() => setCamOpen(false)}
           />
         )}
 
+        <ProductSearchInput
+          onSelectCodigo={handleCodeRead}
+          onManualRequest={() => setManualOpen(true)}
+          placeholder="Escaneá el código o escribí el nombre del producto"
+        />
+        {loading && <div className="alert-info">Procesando…</div>}
 
-        {/* {camOpen && (
-          <CameraScanner
-            onResult={(codigo) => {
-              handleCodeRead(codigo);
-              setCamOpen(false);
-            }}
-            onClose={() => setCamOpen(false)}
-          />
-        )} */}
-
-        {/* Input principal para lector/código manual */}
-        <div className="scanner-input-wrapper">
-          {/* <ScannerInput
-            onCodeRead={handleCodeRead}
-            onManualRequest={() => {
-              // Podrías abrir un modal de código manual,
-              // por ahora que escriban directo en el input.
-            }}
-          /> */}
-          
-          {/* <ProductNameSearch
-            onProductSelected={(prod) => {
-                // Reutiliza el mismo flujo: carga producto y lotes
-                handleCodeRead(prod.codigo_barra);
-            }}
-            /> */}
-
-          <ProductSearchInput
-            onSelectCodigo={(codigo) => handleCodeRead(codigo)}
-                    onManualRequest={() => setManualOpen(true)}
-                    placeholder="Escaneá código o escribí nombre (COCA, MONSTER...)"
-                  />        
-          <small>
-            Escaneá el código del producto para ver su stock y vencimientos.
-          </small>
-        </div>
-
-        
-
-        {/* Info de producto + stock */}
         {producto && (
-          <>
-            <h3>Producto seleccionado</h3>
-            <p>
-              <strong>{producto.nombre}</strong>
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-              Código barras: {producto.codigo_barra}
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-              Stock total (lotes activos): {stockTotal}
-            </p>
+          <div className="producto-elegido">
+            <h3>{producto.nombre}</h3>
+            <p className="muted">Código {producto.codigo_barra} · Stock total: <strong>{stockTotal}</strong></p>
 
-            {/* Detalle de lotes */}
             {lotes.length > 0 ? (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fecha vencimiento</th>
-                    <th>Cantidad</th>
-                  </tr>
-                </thead>
+              <table className="table-venc">
+                <thead><tr><th>Vence</th><th>Lote</th><th>Cant.</th><th>Estado</th></tr></thead>
                 <tbody>
-                  {lotes.map((l) => (
-                    <tr key={l.id}>
-                      <td>{formatFecha(l.fecha_vencimiento)}</td>
+                  {lotes.map((l, i) => (
+                    <tr key={l.id} className={i === 0 ? 'fila-proxima' : ''}>
+                      <td>{formatoAR(l.fecha_vencimiento)}</td>
+                      <td>{l.lote || '-'}</td>
                       <td className="text-right">{l.cantidad}</td>
+                      <td><Semaforo fecha={l.fecha_vencimiento} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            ) : (
-              <p style={{ color: '#9ca3af' }}>
-                No hay lotes con stock para este producto.
-              </p>
-            )}
+            ) : <Vacio>Este producto no tiene stock.</Vacio>}
 
-            {/* Form para descontar */}
-            <div style={{ marginTop: '12px' }}>
-              <h3>Descontar unidades</h3>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  type="number"
-                  min="1"
-                  value={cantidad}
-                  onChange={(e) => setCantidad(e.target.value)}
-                  placeholder="Cantidad a descontar"
-                />
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={handleDescontar}
-                  disabled={loading}
-                >
-                  Descontar
-                </button>
-              </div>
-              <small style={{ color: '#9ca3af' }}>
-                Se descontará primero de los lotes que vencen antes.
-              </small>
-            </div>
-          </>
+            {stockTotal > 0 && (
+              <form className="form-linea centrado" onSubmit={handleDescontar}>
+                <label>Cantidad
+                  <input type="number" min="1" max={stockTotal} value={cantidad} onChange={(e) => setCantidad(e.target.value)} autoFocus style={{ width: 110 }} />
+                </label>
+                <label>Motivo
+                  <select value={motivo} onChange={(e) => setMotivo(e.target.value)}>{MOTIVOS.map((m) => <option key={m}>{m}</option>)}</select>
+                </label>
+                <button className="btn-primary" type="submit" disabled={loading}>Descontar</button>
+              </form>
+            )}
+            <small className="muted">Se descuenta primero del lote que vence antes (FEFO).</small>
+          </div>
         )}
+
+        <ManualCodeModal isOpen={manualOpen} onClose={() => setManualOpen(false)} onConfirm={handleCodeRead} />
       </div>
     </div>
   );

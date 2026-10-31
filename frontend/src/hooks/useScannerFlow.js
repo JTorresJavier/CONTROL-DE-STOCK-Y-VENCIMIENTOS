@@ -1,62 +1,66 @@
 // src/hooks/useScannerFlow.js
-import { useState } from 'react';
-import {
-  getProductoByCodigo,
-  createProducto,
-  createLotesBatch
-} from '../services/api';
+// Flujo de ingreso con escáner: código → (producto nuevo) → cantidad → lote → vencimiento → siguiente.
+// Las líneas se guardan en el navegador hasta tocar "Guardar", así no se pierden si se cambia de pantalla.
+import { useEffect, useState } from 'react';
+import { getProductoByCodigo, createProducto, createLotesBatch } from '../services/api';
+import { parseFechaFlexible } from '../utils/fechas';
 
 const STEPS = {
   IDLE: 'IDLE',
   ASK_NEW_PRODUCT_NAME: 'ASK_NEW_PRODUCT_NAME',
   ASK_QUANTITY: 'ASK_QUANTITY',
   ASK_LOTE: 'ASK_LOTE',
-  ASK_EXPIRY: 'ASK_EXPIRY'
+  ASK_EXPIRY: 'ASK_EXPIRY',
 };
 
+const CLAVE = 'ingreso-pendiente';
+
+function leerPendiente() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLAVE) || '[]');
+    return Array.isArray(v) ? v.filter((l) => l && l.productoId && l.cantidad > 0 && l.fechaVencimiento) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function useScannerFlow() {
-  const [batch, setBatch] = useState([]);
+  const [batch, setBatch] = useState(leerPendiente);
   const [currentProduct, setCurrentProduct] = useState(null);
   const [currentCode, setCurrentCode] = useState('');
   const [currentQuantity, setCurrentQuantity] = useState('');
-  const [currentExpiryRaw, setCurrentExpiryRaw] = useState('');
+  const [currentLote, setCurrentLote] = useState('');
   const [step, setStep] = useState(STEPS.IDLE);
   const [error, setError] = useState(null);
+  const [okMsg, setOkMsg] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [currentLote, setCurrentLote] = useState('');
 
-  // 🔹 Resetea todo el flujo actual y vuelve a IDLE
+  useEffect(() => {
+    try { localStorage.setItem(CLAVE, JSON.stringify(batch)); } catch { /* sin almacenamiento */ }
+  }, [batch]);
+
   const resetFlow = () => {
     setCurrentProduct(null);
     setCurrentCode('');
     setCurrentQuantity('');
-    setCurrentExpiryRaw('');
-    setCurrentLote("");
+    setCurrentLote('');
     setStep(STEPS.IDLE);
-    setError(null);
   };
 
-  // Se llama cuando el usuario toca "Cancelar" en cualquier modal
-  const handleCancelFlow = () => {
-    resetFlow();
-  };
+  const handleCancelFlow = () => { resetFlow(); setError(null); };
 
   const handleCodeRead = async (codigo) => {
     try {
       setError(null);
+      setOkMsg(null);
       setLoading(true);
       setCurrentCode(codigo);
-
       const prod = await getProductoByCodigo(codigo);
       setCurrentProduct(prod);
       setStep(STEPS.ASK_QUANTITY);
     } catch (err) {
-      if (err.message === 'Producto no encontrado') {
-        setStep(STEPS.ASK_NEW_PRODUCT_NAME);
-      } else {
-        setError(err.message);
-        setStep(STEPS.IDLE);
-      }
+      if (err.status === 404) setStep(STEPS.ASK_NEW_PRODUCT_NAME);
+      else { setError(err.message); setStep(STEPS.IDLE); }
     } finally {
       setLoading(false);
     }
@@ -66,11 +70,7 @@ export function useScannerFlow() {
     try {
       setError(null);
       setLoading(true);
-      const nuevo = await createProducto({
-        codigoBarra: currentCode,
-        nombre,
-        descripcion: ''
-      });
+      const nuevo = await createProducto({ codigoBarra: currentCode, nombre });
       setCurrentProduct(nuevo);
       setStep(STEPS.ASK_QUANTITY);
     } catch (err) {
@@ -87,72 +87,39 @@ export function useScannerFlow() {
   };
 
   const handleLoteConfirm = (lote) => {
-  setCurrentLote(lote || "");
-  setStep(STEPS.ASK_EXPIRY);
-};
-
-
-  function parseExpiryToISO(raw) {
-    const value = String(raw).trim();
-    if (!/^\d+$/.test(value)) return null;
-
-    if (value.length === 4) {
-      const mm = parseInt(value.slice(0, 2), 10);
-      const yy = parseInt(value.slice(2, 4), 10);
-      if (isNaN(mm) || isNaN(yy)) return null;
-      if (mm < 1 || mm > 12) return null;
-      const year = 2000 + yy;
-      const monthStr = mm.toString().padStart(2, '0');
-      const dayStr = '01';
-      return `${year}-${monthStr}-${dayStr}`;
-    }
-
-    if (value.length === 6) {
-      const dd = parseInt(value.slice(0, 2), 10);
-      const mm = parseInt(value.slice(2, 4), 10);
-      const yy = parseInt(value.slice(4, 6), 10);
-      if (isNaN(dd) || isNaN(mm) || isNaN(yy)) return null;
-      if (mm < 1 || mm > 12) return null;
-      if (dd < 1 || dd > 31) return null;
-      const year = 2000 + yy;
-      const monthStr = mm.toString().padStart(2, '0');
-      const dayStr = dd.toString().padStart(2, '0');
-      return `${year}-${monthStr}-${dayStr}`;
-    }
-
-    return null;
-  }
-
-  const handleExpiryConfirm = (rawExpiry) => {
-    setCurrentExpiryRaw(rawExpiry);
-
-    const isoDate = parseExpiryToISO(rawExpiry);
-    if (!isoDate) {
-      setError('Fecha no válida. Usá MMYY (1125) o DDMMYY (131225).');
-      setStep(STEPS.ASK_EXPIRY);
-      return;
-    }
-
-    const lote = {
-      productoId: currentProduct.id,
-      fechaVencimiento: isoDate,
-      cantidad: Number(currentQuantity),
-      lote: currentLote || null
-    };
-
-    setBatch((prev) => [...prev, lote]);
-    resetFlow(); // después de guardar la línea, volvemos a IDLE
+    setCurrentLote(lote || '');
+    setStep(STEPS.ASK_EXPIRY);
   };
 
-  const handleFinish = async () => {
-    if (batch.length === 0) {
-      setError('No hay lotes para guardar');
+  // Acepta 1226, 12/26, 311226, 31/12/2026... (mes y año = último día del mes)
+  const handleExpiryConfirm = (rawExpiry) => {
+    const isoDate = parseFechaFlexible(rawExpiry);
+    if (!isoDate) {
+      setError('Fecha no válida. Ejemplos: 1226, 12/26, 311226, 31/12/2026.');
       return;
     }
+    setError(null);
+    setBatch((prev) => [...prev, {
+      productoId: currentProduct.id,
+      nombre: currentProduct.nombre,
+      codigo: currentProduct.codigo_barra,
+      fechaVencimiento: isoDate,
+      cantidad: Number(currentQuantity),
+      lote: currentLote || null,
+    }]);
+    resetFlow();
+  };
+
+  const quitarLinea = (idx) => setBatch((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleFinish = async () => {
+    if (batch.length === 0) { setError('No hay lotes para guardar'); return; }
     try {
       setError(null);
       setLoading(true);
-      await createLotesBatch(batch);
+      await createLotesBatch(batch.map(({ productoId, fechaVencimiento, cantidad, lote }) => ({ productoId, fechaVencimiento, cantidad, lote })));
+      const unidades = batch.reduce((a, l) => a + l.cantidad, 0);
+      setOkMsg(`✅ Se guardaron ${batch.length} líneas (${unidades} unidades).`);
       setBatch([]);
     } catch (err) {
       setError(err.message);
@@ -165,11 +132,11 @@ export function useScannerFlow() {
     batch,
     step,
     error,
+    okMsg,
     loading,
     currentProduct,
     currentCode,
     currentQuantity,
-    currentExpiryRaw,
     currentLote,
     handleCodeRead,
     handleNewProductConfirm,
@@ -177,7 +144,8 @@ export function useScannerFlow() {
     handleExpiryConfirm,
     handleLoteConfirm,
     handleFinish,
-    handleCancelFlow,   // 👈 importante
-    STEPS
+    handleCancelFlow,
+    quitarLinea,
+    STEPS,
   };
 }

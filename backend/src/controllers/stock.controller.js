@@ -1,102 +1,81 @@
 // src/controllers/stock.controller.js
-const pool = require('../db');
+// Salidas de stock (FEFO) e historial de movimientos.
+const db = require('../db');
+const { error, entero, texto } = require('../utils/validar');
+const { registrarMovimiento } = require('./lotes.controller');
+const { esFechaISO } = require('../utils/fechas');
 
-const registrarSalidaStock = async (req, res) => {
-  const { codigoBarra, cantidad, origen, observacion } = req.body;
+// POST /api/stock/salida  { codigoBarra | productoId, cantidad, origen?, observacion? }
+// Descuenta primero de los lotes que vencen antes (FEFO).
+const registrarSalidaStock = (req, res) => {
+  const { codigoBarra, productoId, origen, observacion } = req.body || {};
+  const cantSolicitada = entero(req.body?.cantidad, { min: 1 });
 
-  const cantSolicitada = Number(cantidad);
-  if (!codigoBarra || !cantSolicitada || cantSolicitada <= 0) {
-    return res.status(400).json({ message: 'Datos inválidos para salida de stock' });
-  }
+  const producto = productoId
+    ? db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(Number(productoId))
+    : db.prepare('SELECT id, nombre FROM productos WHERE codigo_barra = ? OR codigo_interno = ?').get(String(codigoBarra || ''), String(codigoBarra || ''));
+  if (!producto) throw error(404, 'Producto no encontrado para la salida de stock');
 
-  const conn = await pool.getConnection();
-
-  try {
-    await conn.beginTransaction();
-
-    // 1) Buscar producto por código de barras
-    const [prodRows] = await conn.query(
-      'SELECT id FROM productos WHERE codigo_barra = ?',
-      [codigoBarra]
-    );
-
-    if (prodRows.length === 0) {
-      throw new Error('Producto no encontrado para la salida de stock');
-    }
-
-    const productoId = prodRows[0].id;
-
-    // 2) Obtener lotes activos ordenados por fecha de vencimiento (FEFO)
-    const [lotes] = await conn.query(
-      `
-      SELECT id, cantidad
-      FROM lotes
+  const resultado = db.transaction(() => {
+    const lotes = db.prepare(`
+      SELECT id, cantidad, fecha_vencimiento FROM lotes
       WHERE producto_id = ? AND cantidad > 0
       ORDER BY fecha_vencimiento ASC, id ASC
-      `,
-      [productoId]
-    );
+    `).all(producto.id);
 
-    if (lotes.length === 0) {
-      throw new Error('No hay lotes con stock para este producto');
-    }
+    const disponible = lotes.reduce((acc, l) => acc + l.cantidad, 0);
+    if (lotes.length === 0) throw error(400, 'No hay lotes con stock para este producto');
+    if (disponible < cantSolicitada) throw error(400, `Stock insuficiente. Disponible: ${disponible}, pedido: ${cantSolicitada}`);
 
+    const actualizar = db.prepare('UPDATE lotes SET cantidad = ? WHERE id = ?');
+    const detalle = [];
     let restante = cantSolicitada;
-    let totalDisponible = 0;
-
-    for (const lote of lotes) {
-      totalDisponible += Number(lote.cantidad) || 0;
-    }
-
-    if (totalDisponible < cantSolicitada) {
-      throw new Error(`Stock insuficiente. Disponible: ${totalDisponible}, pedido: ${cantSolicitada}`);
-    }
-
-    // 3) Descontar lote por lote
     for (const lote of lotes) {
       if (restante <= 0) break;
-
-      const stockLote = Number(lote.cantidad) || 0;
-      if (stockLote <= 0) continue;
-
-      const desc = Math.min(stockLote, restante); // cuánto le saco a este lote
-      const nuevaCantidad = stockLote - desc;
-
-      // Actualizar lote
-      await conn.query(
-        'UPDATE lotes SET cantidad = ? WHERE id = ?',
-        [nuevaCantidad, lote.id]
-      );
-
-      // Registrar movimiento
-      await conn.query(
-        `
-        INSERT INTO movimientos_stock
-          (tipo, producto_id, lote_id, cantidad, origen, observacion)
-        VALUES ('SALIDA', ?, ?, ?, ?, ?)
-        `,
-        [
-          productoId,
-          lote.id,
-          desc,
-          origen || 'DEPOSITO',
-          observacion || 'Salida de stock desde app'
-        ]
-      );
-
+      const desc = Math.min(lote.cantidad, restante);
+      actualizar.run(lote.cantidad - desc, lote.id);
+      registrarMovimiento({
+        tipo: 'SALIDA',
+        productoId: producto.id,
+        loteId: lote.id,
+        cantidad: -desc,
+        origen: texto(origen, { max: 40 }) || 'DEPOSITO',
+        observacion: texto(observacion, { max: 150 }) || 'Salida de stock',
+      });
+      detalle.push({ loteId: lote.id, fecha_vencimiento: lote.fecha_vencimiento, cantidad: desc });
       restante -= desc;
     }
+    return { detalle, restante: disponible - cantSolicitada };
+  })();
 
-    await conn.commit();
-    res.json({ message: 'Stock descontado correctamente' });
-
-  } catch (err) {
-    await conn.rollback();
-    console.error('Error al registrar salida de stock:', err);
-    res.status(500).json({ message: err.message || 'Error al registrar salida de stock' });
-  } finally {
-    conn.release();
-  }
+  res.json({ message: 'Stock descontado correctamente', ...resultado });
 };
 
-module.exports = { registrarSalidaStock };
+// GET /api/movimientos?desde=&hasta=&tipo=&q=&limite=
+const getMovimientos = (req, res) => {
+  const where = [];
+  const params = [];
+  if (esFechaISO(req.query.desde)) { where.push('m.fecha >= ?'); params.push(req.query.desde); }
+  if (esFechaISO(req.query.hasta)) { where.push('m.fecha < date(?, \'+1 day\')'); params.push(req.query.hasta); }
+  if (req.query.tipo) { where.push('m.tipo = ?'); params.push(String(req.query.tipo)); }
+  const q = texto(req.query.q, { max: 100 });
+  if (q) {
+    where.push('(p.nombre LIKE ? OR p.codigo_barra LIKE ? OR m.observacion LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  const limite = Math.min(Number(req.query.limite) || 500, 5000);
+  const rows = db.prepare(`
+    SELECT m.id, m.tipo, m.cantidad, m.origen, m.observacion, m.fecha, m.importacion_id, m.lote_id,
+           m.producto_id, COALESCE(p.nombre, '(producto eliminado)') AS producto_nombre, p.codigo_barra,
+           l.lote, l.fecha_vencimiento
+    FROM movimientos_stock m
+    LEFT JOIN productos p ON p.id = m.producto_id
+    LEFT JOIN lotes l ON l.id = m.lote_id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY m.fecha DESC, m.id DESC
+    LIMIT ?
+  `).all(...params, limite);
+  res.json(rows);
+};
+
+module.exports = { registrarSalidaStock, getMovimientos };

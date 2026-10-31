@@ -1,11 +1,16 @@
 {
   "name": "epicfarma-control-stock",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Control de Stock y Vencimientos - EpicFarma",
   "main": "electron/main.js",
   "scripts": {
     "build:frontend": "cd frontend && npm run build",
-    "start": "electron .",
+    "start": "npm run build:frontend && electron .",
+    "app": "electron .",
+    "backend": "node scripts/electron-node.js backend/src/server.js",
+    "test": "node scripts/electron-node.js --test backend/test/",
+    "lint": "cd frontend && npm run lint",
+    "muestras": "electron scripts/generar-muestras.js",
     "dist": "npm run build:frontend && electron-builder --win"
   },
   "build": {
@@ -31,17 +36,14 @@
         "to": "backend/src"
       },
       {
-        "from": "backend/.env",
-        "to": "backend/.env"
-      },
-      {
         "from": "backend/node_modules",
         "to": "backend/node_modules"
       }
     ],
     "asar": true,
     "asarUnpack": [
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "**/node_modules/better-sqlite3/**/*"
     ]
   },
   "devDependencies": {
@@ -49,9 +51,9 @@
     "electron-builder": "^24.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^9.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
-    "express": "^5.2.1",
-    "mysql2": "^3.15.3"
+    "express": "^5.2.1"
   }
 }

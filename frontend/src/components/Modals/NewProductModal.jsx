@@ -1,13 +1,15 @@
 // src/components/Modals/NewProductModal.jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function NewProductModal({ isOpen, codigo, onConfirm, onCancel }) {
   const [nombre, setNombre] = useState('');
+  const [abiertoPrevio, setAbiertoPrevio] = useState(isOpen);
 
   // Cuando se abre el modal, limpiamos el nombre
-  useEffect(() => {
+  if (isOpen !== abiertoPrevio) {
+    setAbiertoPrevio(isOpen);
     if (isOpen) setNombre('');
-  }, [isOpen]);
+  }
 
   if (!isOpen) return null;
 

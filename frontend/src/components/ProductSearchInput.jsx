@@ -104,8 +104,8 @@ export function ProductSearchInput({
         return;
       }
 
-      // 3) Si parece código de barras -> tratar como código
-      if (esPosibleCodigoBarra(v)) {
+      // 3) Si parece código de barras (o un código interno sin espacios y sin sugerencias) -> tratar como código
+      if (esPosibleCodigoBarra(v) || (sugerencias.length === 0 && /^[\w-]{3,}$/.test(v) && /\d/.test(v))) {
         setQuery("");
         setSugerencias([]);
         onSelectCodigo(v);

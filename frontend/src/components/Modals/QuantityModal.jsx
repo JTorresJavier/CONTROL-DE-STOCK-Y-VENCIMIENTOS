@@ -1,21 +1,21 @@
 // src/components/Modals/QuantityModal.jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function QuantityModal({ isOpen, productoNombre, onConfirm, onCancel }) {
   const [cantidad, setCantidad] = useState('');
-
-  useEffect(() => {
+  const [abiertoPrevio, setAbiertoPrevio] = useState(isOpen);
+  if (isOpen !== abiertoPrevio) {
+    setAbiertoPrevio(isOpen);
     if (isOpen) setCantidad('');
-  }, [isOpen]);
-
+  }
   if (!isOpen) return null;
+
+  const n = Number(cantidad);
+  const valida = Number.isInteger(n) && n > 0;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!cantidad.trim()) return;
-    const n = Number(cantidad);
-    if (isNaN(n) || n <= 0) return;
-    onConfirm(n);
+    if (valida) onConfirm(n);
   };
 
   return (
@@ -24,19 +24,11 @@ export function QuantityModal({ isOpen, productoNombre, onConfirm, onCancel }) {
         <h3>Cantidad</h3>
         <p>Producto: <strong>{productoNombre}</strong></p>
         <form onSubmit={handleSubmit}>
-          <input
-            autoFocus
-            type="number"
-            min="1"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            placeholder="Cantidad"
-          />
+          <input autoFocus type="number" min="1" step="1" inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Cantidad" />
+          {cantidad && !valida && <small className="texto-error">Tiene que ser un número entero mayor a 0.</small>}
           <div className="modal-actions">
-            <button type="button" onClick={onCancel}>
-              Cancelar
-            </button>
-            <button type="submit">Aceptar</button>
+            <button type="button" onClick={onCancel}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={!valida}>Aceptar</button>
           </div>
         </form>
       </div>

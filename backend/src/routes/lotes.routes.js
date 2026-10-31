@@ -1,38 +1,17 @@
 // src/routes/lotes.routes.js
-
-// Importamos Router de express
 const { Router } = require('express');
+const c = require('../controllers/lotes.controller');
+const { manejar } = require('../utils/validar');
 
-// Importamos los controladores de lotes
-const {
-  getLotes,
-  getLotesVencimientos,
-  getLotesVencidos,
-  createLotesBatch,
-  getLotesByProducto
-} = require('../controllers/lotes.controller');
-
-// Creamos el router
 const router = Router();
 
-// GET /api/lotes
-// Lista todos los lotes con info del producto
-router.get('/', getLotes);
+router.get('/', manejar(c.getLotes));
+router.get('/vencimientos', manejar(c.getLotesVencimientos));
+router.get('/vencidos', manejar(c.getLotesVencidos));
+router.post('/batch', manejar(c.createLotesBatch));
+router.get('/producto/:productoId', manejar(c.getLotesByProducto));
+router.put('/:id', manejar(c.updateLote));
+router.post('/:id/baja', manejar(c.bajaLote));
+router.delete('/:id', manejar(c.deleteLote));
 
-// GET /api/lotes/vencimientos?dias=30
-// Lotes que vencen dentro de X días
-router.get('/vencimientos', getLotesVencimientos);
-
-// GET /api/lotes/vencidos
-// Lotes que ya están vencidos
-router.get('/vencidos', getLotesVencidos);
-
-// POST /api/lotes/batch
-// Guarda varios lotes a la vez (ingreso de mercadería)
-router.post('/batch', createLotesBatch);
-
-// NUEVA ruta para lotes de un producto
-router.get('/lotes/producto/:productoId', getLotesByProducto);
-
-// Exportamos el router
 module.exports = router;

@@ -1,0 +1,20 @@
+DROGUERIA DEL SUR S.A.                                   REMITO  R
+Av. Siempre Viva 1234 - CABA                             N° 0003-00012345
+CUIT: 30-71234567-8   IVA Responsable Inscripto         Fecha: 28/10/2026
+
+Cliente: FARMACIA EPICFARMA      Domicilio: Calle Falsa 123
+
+CODIGO  EAN            DESCRIPCION                             CANT  LOTE      VTO
+----------------------------------------------------------------------------------------
+10231   7799000001010  IBUPROFENO 400 MG X 20 COMP             12    L2401A    12/2027
+10233   7799000001034  AMOXICILINA 500 MG X 16 CAPS            6     AMX883    03/2027
+10240   7799000001041  PARACETAMOL 500 MG X 20 COMP            24    P77812    08/2028
+10251                  IBUPROF. 600MG X10 COMPRIMIDOS          10    IB6-22    05/2027
+10260                  OMEPRAZOL 20MG X 14 CAPSULAS            8     OM2045    11/2027
+10270   7799000001089  ALCOHOL EN GEL 250 ML                   20    AG5521    01/2029
+20011   7799000002017  CETIRIZINA 10 MG X 10 COMP              6     CT1102    09/2027
+20012   7799000002024  VITAMINA C 1 G X 10 EFERVESCENTES       15    VC9001    02/2028
+20013   7799000002031  GASAS ESTERILES 10X10 X 10 UNIDADES     30    GZ0077    
+----------------------------------------------------------------------------------------
+TOTAL UNIDADES: 131
+Recibí conforme: ____________________
